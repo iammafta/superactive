@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+twilio
+pipecat-ai[twilio,google]
+python-dotenv
+websockets
