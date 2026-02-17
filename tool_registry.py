@@ -284,6 +284,78 @@ async def handle_call_business_api(params: FunctionCallParams, agent_config: Age
     await params.result_callback(result)
 
 
+async def handle_google_search(params: FunctionCallParams):
+    """Perform a Google search (via DuckDuckGo)."""
+    args = params.arguments
+    query = args.get("query", "").strip()
+    logger.info(f"🔎 Search Query: '{query}'")
+    print(f"DEBUG: Executing Search for '{query}'")
+
+    results = []
+    
+    # 0. Try Tavily (Best for Company Data/Real-time)
+    tavily_key = os.getenv("TAVILY_API_KEY")
+    if tavily_key:
+        try:
+            from tavily import TavilyClient
+            print(f"DEBUG: Using Tavily Key: {tavily_key[:8]}...")
+            tavily = TavilyClient(api_key=tavily_key)
+            # "search" returns a dict with "results" list
+            response = tavily.search(query=query, search_depth="basic", max_results=3)
+            print(f"DEBUG: Raw Tavily Response: {response}")
+            for r in response.get("results", []):
+                print(f"DEBUG: Found Tavily result: {r.get('title')}")
+                results.append({
+                    "title": r.get("title"),
+                    "description": r.get("content"),
+                    "url": r.get("url")
+                })
+        except Exception as e:
+            logger.error(f"Tavily search failed: {e}")
+
+    # 1. Fallback: DuckDuckGo (if no Tavily or Tavily failed)
+    if not results:
+        try:
+            from duckduckgo_search import DDGS
+            with DDGS() as ddgs:
+                search_results = list(ddgs.text(query, max_results=3))
+                for r in search_results:
+                    print(f"DEBUG: Found DDG result: {r.get('title')}")
+                    results.append({
+                        "title": r.get("title"),
+                        "description": r.get("body"),
+                        "url": r.get("href")
+                    })
+        except Exception as e:
+            logger.error(f"DuckDuckGo failed: {e}")
+
+    # 2. Fallback to Wikipedia if no results
+    if not results:
+        print("DEBUG: DDG empty/failed, trying Wikipedia fallback...")
+        try:
+            import wikipedia
+            # search for pages first
+            wiki_search = wikipedia.search(query, results=1)
+            if wiki_search:
+                page_title = wiki_search[0]
+                summary = wikipedia.summary(page_title, sentences=3)
+                print(f"DEBUG: Found Wiki result: {page_title}")
+                results.append({
+                    "title": f"Wikipedia: {page_title}",
+                    "description": summary,
+                    "url": f"https://en.wikipedia.org/wiki/{page_title.replace(' ', '_')}"
+                })
+        except Exception as e:
+            logger.error(f"Wikipedia failed: {e}")
+
+    if results:
+        result = {"status": "success", "results": results}
+    else:
+        result = {"status": "error", "message": "No results found from Search or Wikipedia."}
+
+    await params.result_callback(result)
+
+
 # ── Handler Registry ──────────────────────────────────────────────────
 
 TOOL_HANDLERS = {
@@ -293,6 +365,7 @@ TOOL_HANDLERS = {
     "send_followup_sms": handle_send_followup_sms,
     "log_lead": handle_log_lead,
     "lookup_client": handle_lookup_client,
+    "google_search": handle_google_search,
     # call_business_api is special — needs agent_config closure
 }
 

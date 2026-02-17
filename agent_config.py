@@ -208,11 +208,24 @@ def get_default_agent() -> AgentConfig:
         return agents[0]
 
     # Fallback — the original Sarah persona
-    return AgentConfig(
-        id="default",
-        name="Sarah",
-        business_type="general",
+    return load_agent("debug_chat") or AgentConfig(
+        id="debug_chat",
+        name="Debug Chat Agent",
+        business_type="debug",
         system_prompt=(
+            "You are the Debug Chat Agent. You have access to a 'google_search' tool. "
+            "IMPORTANT: This tool is POWERFUL. It uses Tavily and Google under the hood. "
+            "Use 'google_search' for: "
+            "1. Real-time news (e.g. 'Who won the game?') "
+            "2. Company data (e.g. 'Funding rounds for Anthropic') "
+            "3. Fact checking (e.g. 'Who is president?') "
+            "Do NOT say 'I only have google search'. Just USE the tool for any search request. "
+            "You are helpful, knowledgeable, and ready to test system capabilities."
+        ),
+        greeting="Hello, I am the Debug Chat Agent. Ask me anything!",
+        guardrail_level=0.0,
+        allowed_tools=["google_search"],
+    )
             "You are Sarah, a friendly and professional AI assistant for Superactive, "
             "a next-generation AI communications platform. You help callers with their "
             "questions in a warm, natural conversational style.\n\n"
