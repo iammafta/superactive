@@ -81,6 +81,8 @@ async def incoming_call(request: Request):
     """Handle incoming Twilio call — return TwiML to connect to WebSocket.
     Passes agent_id via custom parameters if specified."""
     host = request.headers.get("host", "localhost:8765")
+    print(f"DEBUG: Incoming call request from {host}")
+    logger.info(f"DEBUG: Incoming call request from {host}")
 
     # Check for agent_id in query params (for outbound calls)
     agent_id = request.query_params.get("agent_id", "")
@@ -136,9 +138,7 @@ async def websocket_endpoint(websocket: WebSocket):
             audio_in_enabled=True,
             audio_out_enabled=True,
             add_wav_header=False,
-            vad_enabled=True,
-            vad_audio_passthrough=True,
-            vad_analyzer=SileroVADAnalyzer(),
+            vad_enabled=False,
             serializer=TwilioFrameSerializer(
                 stream_sid=stream_sid,
                 call_sid=call_sid,

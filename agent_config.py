@@ -108,6 +108,11 @@ class AgentConfig(BaseModel):
     def build_full_prompt(self, current_state: Optional[str] = None) -> str:
         """Build the complete system prompt with guardrail and state context."""
         parts = [self.system_prompt]
+        
+        # Inject context
+        from datetime import datetime
+        parts.append(f"\nCurrent Date: {datetime.now().strftime('%Y-%m-%d')}")
+        
         parts.append(f"\n\n## Guardrails\n{self.get_guardrail_instruction()}")
 
         if self.escalation_triggers:

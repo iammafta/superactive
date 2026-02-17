@@ -115,6 +115,17 @@ TOOL_DEFINITIONS = {
             "required": ["query"],
         },
     },
+    "google_search": {
+        "name": "google_search",
+        "description": "Perform a Google search to find real-time information.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+            },
+            "required": ["query"],
+        },
+    },
 }
 
 
