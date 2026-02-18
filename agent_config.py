@@ -204,6 +204,12 @@ def delete_agent(agent_id: str) -> bool:
 def get_default_agent() -> AgentConfig:
     """Return a default agent config when no specific one is requested."""
     agents = list_agents()
+    
+    # Prefer debug_chat if available
+    debug_agent = next((a for a in agents if a.id == "debug_chat"), None)
+    if debug_agent:
+        return debug_agent
+        
     if agents:
         return agents[0]
 

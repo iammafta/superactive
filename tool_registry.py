@@ -115,9 +115,9 @@ TOOL_DEFINITIONS = {
             "required": ["query"],
         },
     },
-    "google_search": {
-        "name": "google_search",
-        "description": "Perform a Google search to find real-time information.",
+    "tavily_search": {
+        "name": "tavily_search",
+        "description": "Perform a real-time web search using Tavily to find up-to-date information.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -284,74 +284,72 @@ async def handle_call_business_api(params: FunctionCallParams, agent_config: Age
     await params.result_callback(result)
 
 
-async def handle_google_search(params: FunctionCallParams):
-    """Perform a Google search (via DuckDuckGo)."""
+async def handle_tavily_search(params: FunctionCallParams):
+    """Perform a web search via Tavily (preferred) or DuckDuckGo."""
     args = params.arguments
     query = args.get("query", "").strip()
     logger.info(f"🔎 Search Query: '{query}'")
-    print(f"DEBUG: Executing Search for '{query}'")
-
-    results = []
     
-    # 0. Try Tavily (Best for Company Data/Real-time)
-    tavily_key = os.getenv("TAVILY_API_KEY")
-    if tavily_key:
-        try:
-            from tavily import TavilyClient
-            print(f"DEBUG: Using Tavily Key: {tavily_key[:8]}...")
-            tavily = TavilyClient(api_key=tavily_key)
-            # "search" returns a dict with "results" list
-            response = tavily.search(query=query, search_depth="basic", max_results=3)
-            print(f"DEBUG: Raw Tavily Response: {response}")
-            for r in response.get("results", []):
-                print(f"DEBUG: Found Tavily result: {r.get('title')}")
-                results.append({
-                    "title": r.get("title"),
-                    "description": r.get("content"),
-                    "url": r.get("url")
-                })
-        except Exception as e:
-            logger.error(f"Tavily search failed: {e}")
+    import asyncio
 
-    # 1. Fallback: DuckDuckGo (if no Tavily or Tavily failed)
-    if not results:
-        try:
-            from duckduckgo_search import DDGS
-            with DDGS() as ddgs:
-                search_results = list(ddgs.text(query, max_results=3))
-                for r in search_results:
-                    print(f"DEBUG: Found DDG result: {r.get('title')}")
+    def _perform_search_sync():
+        results = []
+        # 0. Try Tavily (Best for Company Data/Real-time)
+        tavily_key = os.getenv("TAVILY_API_KEY")
+        if tavily_key:
+            try:
+                from tavily import TavilyClient
+                tavily = TavilyClient(api_key=tavily_key)
+                response = tavily.search(query=query, search_depth="basic", max_results=3)
+                for r in response.get("results", []):
                     results.append({
                         "title": r.get("title"),
-                        "description": r.get("body"),
-                        "url": r.get("href")
+                        "description": r.get("content"),
+                        "url": r.get("url")
                     })
-        except Exception as e:
-            logger.error(f"DuckDuckGo failed: {e}")
+            except Exception as e:
+                logger.error(f"Tavily search failed: {e}")
 
-    # 2. Fallback to Wikipedia if no results
-    if not results:
-        print("DEBUG: DDG empty/failed, trying Wikipedia fallback...")
-        try:
-            import wikipedia
-            # search for pages first
-            wiki_search = wikipedia.search(query, results=1)
-            if wiki_search:
-                page_title = wiki_search[0]
-                summary = wikipedia.summary(page_title, sentences=3)
-                print(f"DEBUG: Found Wiki result: {page_title}")
-                results.append({
-                    "title": f"Wikipedia: {page_title}",
-                    "description": summary,
-                    "url": f"https://en.wikipedia.org/wiki/{page_title.replace(' ', '_')}"
-                })
-        except Exception as e:
-            logger.error(f"Wikipedia failed: {e}")
+        # 1. Fallback: DuckDuckGo
+        if not results:
+            try:
+                from duckduckgo_search import DDGS
+                with DDGS() as ddgs:
+                    search_results = list(ddgs.text(query, max_results=3))
+                    for r in search_results:
+                        results.append({
+                            "title": r.get("title"),
+                            "description": r.get("body"),
+                            "url": r.get("href")
+                        })
+            except Exception as e:
+                logger.error(f"DuckDuckGo failed: {e}")
+                
+        # 2. Fallback: Wikipedia
+        if not results:
+            try:
+                import wikipedia
+                wiki_search = wikipedia.search(query, results=1)
+                if wiki_search:
+                    page_title = wiki_search[0]
+                    summary = wikipedia.summary(page_title, sentences=3)
+                    results.append({
+                        "title": f"Wikipedia: {page_title}",
+                        "description": summary,
+                        "url": f"https://en.wikipedia.org/wiki/{page_title.replace(' ', '_')}"
+                    })
+            except Exception as e:
+                logger.error(f"Wikipedia failed: {e}")
+
+        return results
+
+    # Run blocking search in thread
+    results = await asyncio.to_thread(_perform_search_sync)
 
     if results:
         result = {"status": "success", "results": results}
     else:
-        result = {"status": "error", "message": "No results found from Search or Wikipedia."}
+        result = {"status": "error", "message": "No results found."}
 
     await params.result_callback(result)
 
@@ -365,7 +363,7 @@ TOOL_HANDLERS = {
     "send_followup_sms": handle_send_followup_sms,
     "log_lead": handle_log_lead,
     "lookup_client": handle_lookup_client,
-    "google_search": handle_google_search,
+    "tavily_search": handle_tavily_search,
     # call_business_api is special — needs agent_config closure
 }
 
@@ -391,9 +389,75 @@ def register_tools_for_agent(llm, agent_config: AgentConfig, call_id: str = None
         if tool_name in TOOL_HANDLERS:
             handler = TOOL_HANDLERS[tool_name]
             if call_id and call_logger:
-                async def logging_wrapper(params: FunctionCallParams, _handler=handler, _name=tool_name):
+                async def logging_wrapper(*args, _handler=handler, _name=tool_name, **kwargs):
+                    logger.info(f"🐛 DEBUG: Wrapper called for {_name} with {len(args)} args")
+                    
                     call_logger.record_tool_use(call_id, _name)
-                    await _handler(params)
+                    
+                    # Reconstruction logic for Google Vertex LLM invocation signature:
+                    # Arg 0: name (str)
+                    # Arg 1: id (str)
+                    # Arg 2: arguments (dict)
+                    # ...
+                    # Last Arg: result_callback (function) or Arg 5
+                    
+                    params = None
+                    
+                    # Check if arg 0 is already FunctionCallParams (Standard Pipecat)
+                    if args and hasattr(args[0], "arguments"):
+                        params = args[0]
+                    
+                    # Check if we have the raw unpacked arguments (Google Vertex Pipecat)
+                    elif len(args) >= 6 and isinstance(args[2], dict) and callable(args[-1]):
+                         # Reconstruct FunctionCallParams
+                         # Argument order from Google Vertex LLM service:
+                         # 0: function_name
+                         # 1: tool_call_id
+                         # 2: arguments
+                         # 3: llm service instance
+                         # 4: context
+                         # 5: result_callback
+                         
+                         from pipecat.services.llm_service import FunctionCallParams
+                         try:
+                             params = FunctionCallParams(
+                                 function_name=args[0],
+                                 tool_call_id=args[1],
+                                 arguments=args[2],
+                                 llm=args[3],
+                                 context=args[4],
+                                 result_callback=args[-1]
+                             )
+                         except Exception as e:
+                             logger.error(f"❌ Error constructing FunctionCallParams: {e}")
+                             # Fail gracefully by calling callback with error
+                             if callable(args[-1]):
+                                 await args[-1]({"error": f"Internal error constructing params: {e}"})
+                             return
+                    
+                    if params:
+                        try:
+                            # Verify llm and context are valid before calling
+                            if not params.llm or not params.context:
+                                logger.warning(f"⚠️ Warning: llm or context is None for {params.function_name}")
+                            
+                            logger.info(f"▶️ Executing handler for {_name}...")
+                            await _handler(params)
+                            logger.info(f"✅ Handler for {_name} completed.")
+                        except Exception as e:
+                            logger.error(f"❌ API Handler Crashed: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            # Try to notify the user via callback if possible
+                            if params.result_callback:
+                                await params.result_callback({"error": "Tool execution failed interneally."})
+                    else:
+                        logger.error(f"❌ Could not reconstruct FunctionCallParams from args: {args}")
+                        # Last ditch: try to find a callback and fail gracefully
+                        for arg in args:
+                            if callable(arg):
+                                await arg({"error": "Internal tooling error: invalid argument format."})
+                                return
                 llm.register_function(tool_name, logging_wrapper)
             else:
                 llm.register_function(tool_name, handler)
