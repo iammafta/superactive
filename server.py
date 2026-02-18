@@ -27,6 +27,7 @@ logging.basicConfig(level=logging.INFO)
 from pydantic import BaseModel
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import EndFrame, TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -65,6 +66,10 @@ PORT = int(os.getenv("PORT", 8765))
 CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "service_account.json")
 GCP_PROJECT = os.getenv("GCP_PROJECT_ID", "divine-apogee-480205-h8")
 GCP_LOCATION = os.getenv("GCP_LOCATION", "us-central1")
+tavily_key = os.getenv("TAVILY_API_KEY")
+print(f"DEBUG: Startup - Tavily Key Present: {bool(tavily_key)}")
+if tavily_key:
+    print(f"DEBUG: Tavily Key Prefix: {tavily_key[:8]}...")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -193,10 +198,31 @@ async def websocket_endpoint(websocket: WebSocket):
         transition_filter = StateTransitionFilter(state_processor)
 
     # 8. Build pipeline
+    # 8. Build pipeline
+    # NEW: VAD (Voice Activity Detection) - Back to Silero (WebRTC not in installed pipecat version)
+    try:
+        print("DEBUG: Initializing Silero VAD...")
+        vad = SileroVADAnalyzer(
+            params=VADParams(
+                start_confidence=0.6,
+                stop_duration=1.0,
+                min_audio_duration=0.2,
+            )
+        )
+        print("DEBUG: Silero VAD Initialized successfully")
+    except Exception as e:
+        print(f"CRITICAL ERROR: Failed to init VAD: {e}")
+        # Fallback to no VAD if it fails to avoid crash
+        logger.error(f"VAD Init Failed, continuing without VAD: {e}")
+        vad = None
+
     pipeline_components = [
         transport.input(),           # Twilio audio in
-        stt,                         # Speech → Text
     ]
+    if vad:
+        pipeline_components.append(vad)
+    
+    pipeline_components.append(stt)  # Speech → Text
 
     if state_processor:
         pipeline_components.append(state_processor)  # State-aware context injection

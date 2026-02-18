@@ -7,7 +7,9 @@
     "greeting": "Hello! I'm the debug agent. I'm ready to chat about anything. What's on your mind?",
     "voice_id": "en-US-Chirp3-HD-Charon",
     "guardrail_level": 0.0,
-    "allowed_tools": [],
+    "allowed_tools": [
+        "google_search"
+    ],
     "states": [],
     "active": true,
     "max_duration_seconds": 600
