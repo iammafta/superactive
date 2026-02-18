@@ -39,20 +39,15 @@ export default function Sidebar() {
                     paddingLeft: 8,
                 }}
             >
-                <div
+                <img
+                    src="/logo.png"
+                    alt="Superactive"
                     style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 18,
+                        width: 40,
+                        height: 40,
+                        objectFit: "contain"
                     }}
-                >
-                    ⚡
-                </div>
+                />
                 <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.5 }}>
                     Superactive
                 </span>

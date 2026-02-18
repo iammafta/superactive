@@ -35,9 +35,11 @@ class StateMachineProcessor(FrameProcessor):
     unchanged, and additionally injects state-aware context for TranscriptionFrames.
     """
 
-    def __init__(self, agent_config: AgentConfig, **kwargs):
+    def __init__(self, agent_config: AgentConfig, call_id: str = None, call_logger=None, **kwargs):
         super().__init__(**kwargs)
         self._config = agent_config
+        self._call_id = call_id
+        self._call_logger = call_logger
         self._states = {s.name: s for s in agent_config.states}
 
         # Current state
@@ -89,6 +91,10 @@ class StateMachineProcessor(FrameProcessor):
             self._current_state = new_state
             self._state_turn_count = 0
             logger.info(f"🔄 State transition: {old} → {new_state}")
+            if self._call_id and self._call_logger:
+                self._call_logger.record_state_transition(
+                    self._call_id, old or "unknown", new_state, self._turn_count
+                )
         else:
             logger.warning(f"Unknown state: {new_state}")
 
@@ -172,6 +178,8 @@ class StateMachineProcessor(FrameProcessor):
 
         # Check escalation
         if self._check_escalation(user_text):
+            if self._call_id and self._call_logger:
+                self._call_logger.record_escalation(self._call_id)
             parts.append(
                 "[SYSTEM: Caller wants to speak to a human. Use the transfer_to_human "
                 "tool immediately. Be empathetic and confirm the transfer.]"
@@ -179,6 +187,8 @@ class StateMachineProcessor(FrameProcessor):
 
         # Check frustration
         if self._check_frustration(user_text):
+            if self._call_id and self._call_logger:
+                self._call_logger.record_frustration(self._call_id)
             parts.append(
                 "[SYSTEM: Caller sounds frustrated. Acknowledge their frustration sincerely. "
                 "Offer to transfer to a human if they prefer.]"
@@ -213,6 +223,11 @@ class StateMachineProcessor(FrameProcessor):
             self._turn_count += 1
             self._state_turn_count += 1
 
+            # Log user speech to call transcript
+            logger.info(f"🎤 User said: '{frame.text}' | call_id={self._call_id} | logger={'yes' if self._call_logger else 'NO'}")
+            if self._call_id and self._call_logger and frame.text.strip():
+                self._call_logger.add_transcript(self._call_id, "user", frame.text)
+
             injection = self._build_context_injection(frame.text)
             if injection:
                 logger.debug(f"💉 Injecting context: {injection}")
@@ -230,13 +245,25 @@ class StateMachineProcessor(FrameProcessor):
 class StateTransitionFilter(FrameProcessor):
     """Parses LLM output for state transition tags and updates the state machine.
 
-    Sits between LLM and TTS. Strips [TRANSITION: state] and [HANGUP] tags from
-    LLM output before passing cleaned text to TTS.
+    Sits between LLM and TTS. Strips [TRANSITION: state], [HANGUP], [STATE: ...],
+    [SYSTEM: ...], and all other bracket tags from LLM output before passing
+    cleaned text to TTS.
+
+    Because LLM output streams token-by-token (each TextFrame is a few characters),
+    tags like [TRANSITION: greeting] arrive as multiple fragments: "[", "TRANS",
+    "ITION:", " greeting", "]". A simple regex on each chunk would never match.
+
+    Solution: When we encounter a "[", we buffer text until "]" arrives, then
+    process the complete tag. Non-bracket text is forwarded immediately.
     """
 
-    def __init__(self, monitor: StateMachineProcessor, **kwargs):
+    def __init__(self, monitor: StateMachineProcessor, call_id: str = None, call_logger=None, **kwargs):
         super().__init__(**kwargs)
         self._monitor = monitor
+        self._call_id = call_id
+        self._call_logger = call_logger
+        self._buffer = ""           # Accumulates text when inside a bracket tag
+        self._buffering = False     # True when we've seen "[" but not yet "]"
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         """Intercept LLM text frames to strip transition/hangup tags.
@@ -246,9 +273,7 @@ class StateTransitionFilter(FrameProcessor):
         """
         # Only intercept downstream TextFrames; forward everything else
         if not (direction == FrameDirection.DOWNSTREAM and isinstance(frame, TextFrame)):
-            # Let base class handle internal bookkeeping
             await super().process_frame(frame, direction)
-            # MUST explicitly forward the frame — super() doesn't do this!
             await self.push_frame(frame, direction)
             return
 
@@ -257,23 +282,90 @@ class StateTransitionFilter(FrameProcessor):
 
         text = frame.text
 
-        # Check for [HANGUP]
-        if "[HANGUP]" in text:
+        # Process character-by-character to handle streaming bracket tags
+        clean_chunks = []  # Text to forward to TTS
+        i = 0
+        while i < len(text):
+            ch = text[i]
+
+            if self._buffering:
+                self._buffer += ch
+                if ch == "]":
+                    # Complete tag captured — process it
+                    await self._handle_tag(self._buffer, direction)
+                    self._buffer = ""
+                    self._buffering = False
+            elif ch == "[":
+                # Start buffering a potential tag
+                self._buffering = True
+                self._buffer = "["
+            else:
+                clean_chunks.append(ch)
+
+            i += 1
+
+        # Forward any clean (non-tag) text
+        clean_text = "".join(clean_chunks)
+        if clean_text:
+            if self._call_id and self._call_logger:
+                self._call_logger.add_transcript(self._call_id, "agent", clean_text)
+            await self.push_frame(TextFrame(clean_text), direction)
+
+    async def _handle_tag(self, tag: str, direction: FrameDirection):
+        """Process a complete bracketed tag like [TRANSITION: greeting] or [HANGUP]."""
+        tag_upper = tag.upper()
+
+        # [HANGUP] — end the call
+        if "HANGUP" in tag_upper:
             logger.info("📞 LLM requested hangup via [HANGUP] tag")
-            text = text.replace("[HANGUP]", "").strip()
-            if text:
-                await self.push_frame(TextFrame(text), direction)
             await self.push_frame(EndFrame(), direction)
             return
 
-        # Check for [TRANSITION: state_name]
-        match = re.search(r"\[TRANSITION:\s*(\w+)\]", text)
+        # [TRANSITION: state_name] — change state
+        match = re.search(r"\[TRANSITION:\s*(\w+)\]", tag, re.IGNORECASE)
         if match:
             new_state = match.group(1)
             logger.info(f"🔄 LLM requested transition to '{new_state}'")
             self._monitor.transition_to(new_state)
-            text = re.sub(r"\[TRANSITION:\s*\w+\]", "", text).strip()
+            return
 
-        # Push cleaned text (or original if unchanged)
-        if text:
-            await self.push_frame(TextFrame(text) if match else frame, direction)
+        # All other bracket tags ([STATE: ...], [SYSTEM: ...], etc.) — silently drop
+        logger.debug(f"🔇 Stripped tag from TTS output: {tag}")
+
+
+class TranscriptLoggerProcessor(FrameProcessor):
+    """Lightweight transcript logger for stateless agents (no state machine).
+
+    Logs user speech from TranscriptionFrames and forwards all frames unchanged.
+    """
+
+    def __init__(self, call_id: str, call_logger, **kwargs):
+        super().__init__(**kwargs)
+        self._call_id = call_id
+        self._call_logger = call_logger
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if direction == FrameDirection.DOWNSTREAM and isinstance(frame, TranscriptionFrame):
+            if frame.text.strip():
+                self._call_logger.add_transcript(self._call_id, "user", frame.text)
+        await self.push_frame(frame, direction)
+
+
+class TranscriptLoggerFilter(FrameProcessor):
+    """Lightweight agent speech logger for stateless agents (no state machine).
+
+    Logs agent speech from TextFrames and forwards all frames unchanged.
+    """
+
+    def __init__(self, call_id: str, call_logger, **kwargs):
+        super().__init__(**kwargs)
+        self._call_id = call_id
+        self._call_logger = call_logger
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if direction == FrameDirection.DOWNSTREAM and isinstance(frame, TextFrame):
+            if frame.text.strip():
+                self._call_logger.add_transcript(self._call_id, "agent", frame.text)
+        await self.push_frame(frame, direction)

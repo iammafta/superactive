@@ -80,6 +80,10 @@ class CallLogger:
                 "text": text,
                 "ts": datetime.now().isoformat(),
             })
+            logger.debug(f"📝 Transcript [{role}]: {text[:80]}")
+        else:
+            logger.warning(f"📝 Transcript DROPPED — call_id '{call_id}' not in active calls. "
+                          f"Active: {list(self._active_calls.keys())}")
 
     def record_state_transition(self, call_id: str, from_state: str, to_state: str, turn: int):
         """Record a state transition."""
@@ -188,28 +192,79 @@ class CallLogger:
 
         return await asyncio.to_thread(_read_calls)
 
+    @staticmethod
+    def _compute_delta(current: float, previous: float) -> str:
+        """Compute period-over-period percentage change as a display string."""
+        if previous == 0:
+            return "+100%" if current > 0 else "0%"
+        delta = ((current - previous) / previous) * 100
+        sign = "+" if delta >= 0 else ""
+        return f"{sign}{delta:.0f}%"
+
     async def get_analytics(self, days: int = 30) -> dict:
-        """Aggregate analytics for the dashboard."""
-        calls = await self.get_calls(days=days)
-        
-        if not calls:
+        """Aggregate analytics for the dashboard with period comparison."""
+        # Fetch double the range for period-over-period comparison
+        all_calls = await self.get_calls(days=days * 2)
+
+        # Split into current and previous period
+        from datetime import timedelta
+        cutoff = datetime.now() - timedelta(days=days)
+        current_calls = [c for c in all_calls if c.started_at >= cutoff.isoformat()]
+        previous_calls = [c for c in all_calls if c.started_at < cutoff.isoformat()]
+
+        empty_changes = {"total_calls": "0%", "avg_duration": "0%", "booking_rate": "0%", "frustration_rate": "0%"}
+
+        if not current_calls:
             return {
                 "total_calls": 0, "avg_duration": 0, "booking_rate": 0,
                 "frustration_rate": 0,
-                "outcomes": {}, "agent_performance": [], "hang_up_heatmap": {}
+                "outcomes": {"booked": 0, "transferred": 0, "completed": 0, "hung_up": 0},
+                "agent_performance": [], "hang_up_heatmap": {},
+                "calls_per_day": [], "changes": empty_changes,
             }
 
-        total = len(calls)
-        total_duration = sum(c.duration_seconds for c in calls)
-        booked = sum(1 for c in calls if c.outcome == "booked")
-        transferred = sum(1 for c in calls if c.outcome == "transferred")
-        hung_up = sum(1 for c in calls if c.outcome == "hung_up")
-        completed = sum(1 for c in calls if c.outcome == "completed")
-        frustrated = sum(1 for c in calls if c.frustration_triggered)
+        total = len(current_calls)
+        total_duration = sum(c.duration_seconds for c in current_calls)
+        booked = sum(1 for c in current_calls if c.outcome == "booked")
+        transferred = sum(1 for c in current_calls if c.outcome == "transferred")
+        hung_up = sum(1 for c in current_calls if c.outcome == "hung_up")
+        completed = sum(1 for c in current_calls if c.outcome == "completed")
+        frustrated = sum(1 for c in current_calls if c.frustration_triggered)
+
+        avg_dur = round(total_duration / total) if total else 0
+        book_rate = round(booked / total * 100, 1) if total else 0
+        frust_rate = round(frustrated / total * 100, 1) if total else 0
+
+        # Previous period metrics for comparison
+        prev_total = len(previous_calls)
+        prev_dur = round(sum(c.duration_seconds for c in previous_calls) / prev_total) if prev_total else 0
+        prev_booked = sum(1 for c in previous_calls if c.outcome == "booked")
+        prev_book_rate = round(prev_booked / prev_total * 100, 1) if prev_total else 0
+        prev_frustrated = sum(1 for c in previous_calls if c.frustration_triggered)
+        prev_frust_rate = round(prev_frustrated / prev_total * 100, 1) if prev_total else 0
+
+        changes = {
+            "total_calls": self._compute_delta(total, prev_total),
+            "avg_duration": self._compute_delta(avg_dur, prev_dur),
+            "booking_rate": self._compute_delta(book_rate, prev_book_rate),
+            "frustration_rate": self._compute_delta(frust_rate, prev_frust_rate),
+        }
+
+        # Calls per day — build array with zeros for empty days
+        from datetime import timedelta as td
+        day_counts: dict[str, int] = {}
+        for c in current_calls:
+            day = c.started_at[:10]  # "YYYY-MM-DD"
+            day_counts[day] = day_counts.get(day, 0) + 1
+
+        calls_per_day = []
+        for i in range(days):
+            d = (datetime.now() - td(days=days - 1 - i)).strftime("%Y-%m-%d")
+            calls_per_day.append({"date": d, "count": day_counts.get(d, 0)})
 
         # Per-agent breakdown
         agent_stats: dict = {}
-        for call in calls:
+        for call in current_calls:
             aid = call.agent_id
             if aid not in agent_stats:
                 agent_stats[aid] = {"calls": 0, "booked": 0, "total_duration": 0, "business_type": call.business_type}
@@ -231,15 +286,15 @@ class CallLogger:
 
         # Hang-up state analysis (where callers drop off)
         hang_up_states: dict = {}
-        for call in calls:
+        for call in current_calls:
             if call.hang_up_state:
                 hang_up_states[call.hang_up_state] = hang_up_states.get(call.hang_up_state, 0) + 1
 
         return {
             "total_calls": total,
-            "avg_duration": round(total_duration / total) if total else 0,
-            "booking_rate": round(booked / total * 100, 1) if total else 0,
-            "frustration_rate": round(frustrated / total * 100, 1) if total else 0,
+            "avg_duration": avg_dur,
+            "booking_rate": book_rate,
+            "frustration_rate": frust_rate,
             "outcomes": {
                 "booked": booked,
                 "transferred": transferred,
@@ -248,6 +303,8 @@ class CallLogger:
             },
             "agent_performance": agent_performance,
             "hang_up_heatmap": hang_up_states,
+            "calls_per_day": calls_per_day,
+            "changes": changes,
         }
 
 

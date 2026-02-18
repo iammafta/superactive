@@ -15,18 +15,8 @@ import {
     Activity
 } from "lucide-react";
 import { API_BASE_URL, fetcher } from "@/lib/api";
+import type { AgentConfig } from "@/lib/types";
 import TestCallModal from "@/components/TestCallModal";
-
-interface AgentConfig {
-    id: string;
-    name: string;
-    business_type: string;
-    guardrail_level: number;
-    active: boolean;
-    description: string;
-    allowed_tools: string[];
-    states: { name: string }[];
-}
 
 const TYPE_ICONS: Record<string, any> = {
     insurance: Shield,

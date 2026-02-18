@@ -383,17 +383,26 @@ def get_tools_for_agent(agent_config: AgentConfig) -> list[dict]:
     return tools
 
 
-def register_tools_for_agent(llm, agent_config: AgentConfig):
+def register_tools_for_agent(llm, agent_config: AgentConfig, call_id: str = None, call_logger=None):
     """Register tool handlers with the LLM service for this agent."""
     registered = []
 
     for tool_name in agent_config.allowed_tools:
         if tool_name in TOOL_HANDLERS:
-            llm.register_function(tool_name, TOOL_HANDLERS[tool_name])
+            handler = TOOL_HANDLERS[tool_name]
+            if call_id and call_logger:
+                async def logging_wrapper(params: FunctionCallParams, _handler=handler, _name=tool_name):
+                    call_logger.record_tool_use(call_id, _name)
+                    await _handler(params)
+                llm.register_function(tool_name, logging_wrapper)
+            else:
+                llm.register_function(tool_name, handler)
             registered.append(tool_name)
         elif tool_name == "call_business_api":
             # Special: closure over agent_config for webhook URL
             async def webhook_handler(params: FunctionCallParams, _cfg=agent_config):
+                if call_id and call_logger:
+                    call_logger.record_tool_use(call_id, "call_business_api")
                 await handle_call_business_api(params, _cfg)
             llm.register_function("call_business_api", webhook_handler)
             registered.append("call_business_api")

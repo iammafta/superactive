@@ -19,20 +19,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL, fetcher } from "@/lib/api";
 
-interface AnalyticsData {
-    total_calls: number;
-    avg_duration: number;
-    booking_rate: number;
-    frustration_rate: number;
-    outcomes: {
-        booked: number;
-        transferred: number;
-        completed: number;
-        hung_up: number;
-    };
-    agent_performance: any[];
-    hang_up_heatmap: Record<string, number>;
-}
+import type { AnalyticsData } from "@/lib/types";
 
 function formatDuration(seconds: number): string {
     const m = Math.floor(seconds / 60);
@@ -387,28 +374,28 @@ export default function DashboardPage() {
                 <MetricCard
                     label="Total Calls"
                     value={data.total_calls.toLocaleString()}
-                    change={data.total_calls > 0 ? "+100%" : "0%"}
+                    change={data.changes?.total_calls}
                     Icon={Phone}
                     color="blue"
                 />
                 <MetricCard
                     label="Avg Duration"
                     value={formatDuration(data.avg_duration)}
-                    change={data.avg_duration > 0 ? "+4s" : "0s"}
+                    change={data.changes?.avg_duration}
                     Icon={Clock}
                     color="purple"
                 />
                 <MetricCard
                     label="Booking Rate"
                     value={`${data.booking_rate}%`}
-                    change={data.booking_rate > 0 ? "+8%" : "0%"}
+                    change={data.changes?.booking_rate}
                     Icon={Calendar}
                     color="green"
                 />
                 <MetricCard
                     label="Cost Savings"
                     value={`$${costSavings.toLocaleString()}`}
-                    change={costSavings > 0 ? "+100%" : "0%"}
+                    change={data.changes?.total_calls}
                     Icon={DollarSign}
                     color="orange"
                 />
@@ -419,36 +406,53 @@ export default function DashboardPage() {
                 {/* Call Volume Chart - placeholder with gradient bar */}
                 <div className="glass-card" style={{ padding: 24, flex: 1.5, minWidth: 300 }}>
                     <h3 className="section-title">Calls per Day (Last 30 Days)</h3>
-                    <div
-                        style={{
-                            height: 180,
-                            display: "flex",
-                            alignItems: "flex-end",
-                            gap: 4,
-                            paddingBottom: 20,
-                        }}
-                    >
-                        {/* 
-                           For real implementation, we'd use Recharts or similar.
-                           Keeping CSS bars for now but cleaner.
-                        */}
-                        {Array.from({ length: 30 }, (_, i) => {
-                            // Mock localized distribution
-                            const h = Math.max(10, Math.random() * 80);
-                            return (
-                                <div
-                                    key={i}
-                                    style={{
-                                        flex: 1,
-                                        height: `${h}%`,
-                                        background: `linear-gradient(to top, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.6))`,
-                                        borderRadius: "2px 2px 0 0",
-                                        transition: "height 0.3s ease",
-                                    }}
-                                />
-                            );
-                        })}
-                    </div>
+                    {data.calls_per_day && data.calls_per_day.length > 0 ? (
+                        <>
+                            <div
+                                style={{
+                                    height: 180,
+                                    display: "flex",
+                                    alignItems: "flex-end",
+                                    gap: 4,
+                                    paddingBottom: 24,
+                                }}
+                            >
+                                {(() => {
+                                    const maxCount = Math.max(1, ...data.calls_per_day.map(d => d.count));
+                                    return data.calls_per_day.map((day, i) => {
+                                        const pct = (day.count / maxCount) * 100;
+                                        return (
+                                            <div
+                                                key={day.date}
+                                                title={`${day.date}: ${day.count} call${day.count !== 1 ? "s" : ""}`}
+                                                style={{
+                                                    flex: 1,
+                                                    height: `${Math.max(pct, day.count > 0 ? 8 : 2)}%`,
+                                                    background: day.count > 0
+                                                        ? `linear-gradient(to top, rgba(59, 130, 246, 0.3), rgba(59, 130, 246, 0.7))`
+                                                        : "rgba(55, 65, 81, 0.3)",
+                                                    borderRadius: "2px 2px 0 0",
+                                                    transition: "height 0.3s ease",
+                                                    cursor: "default",
+                                                }}
+                                            />
+                                        );
+                                    });
+                                })()}
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-muted)" }}>
+                                <span>{data.calls_per_day[0]?.date.slice(5)}</span>
+                                {data.calls_per_day.length > 15 && (
+                                    <span>{data.calls_per_day[Math.floor(data.calls_per_day.length / 2)]?.date.slice(5)}</span>
+                                )}
+                                <span>{data.calls_per_day[data.calls_per_day.length - 1]?.date.slice(5)}</span>
+                            </div>
+                        </>
+                    ) : (
+                        <div style={{ height: 180, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 14 }}>
+                            No call data yet. Make some calls to see the chart.
+                        </div>
+                    )}
                 </div>
 
                 <OutcomeDonut outcomes={data.outcomes} />
