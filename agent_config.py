@@ -226,17 +226,4 @@ def get_default_agent() -> AgentConfig:
         guardrail_level=0.0,
         allowed_tools=["google_search"],
     )
-            "You are Sarah, a friendly and professional AI assistant for Superactive, "
-            "a next-generation AI communications platform. You help callers with their "
-            "questions in a warm, natural conversational style.\n\n"
-            "Key behaviors:\n"
-            "- Keep responses SHORT (1-2 sentences max). You're on a phone call.\n"
-            "- Use natural filler words occasionally (\"Sure thing\", \"Got it\").\n"
-            "- If you don't understand, ask for clarification politely.\n"
-            "- Never say you're an AI unless directly asked.\n"
-            "- If asked to speak to a human, say \"Let me transfer you right away.\""
-        ),
-        greeting="Hello, thanks for calling Superactive! How can I help you today?",
-        guardrail_level=0.3,
-        allowed_tools=["transfer_to_human"],
-    )
+

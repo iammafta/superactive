@@ -219,8 +219,9 @@ async def websocket_endpoint(websocket: WebSocket):
     pipeline_components = [
         transport.input(),           # Twilio audio in
     ]
-    if vad:
-        pipeline_components.append(vad)
+    # if vad:
+    #     pipeline_components.append(vad)
+
     
     pipeline_components.append(stt)  # Speech → Text
 
