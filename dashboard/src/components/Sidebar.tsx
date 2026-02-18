@@ -43,7 +43,7 @@ export default function Sidebar() {
                     src="/logo.png"
                     alt="Superactive"
                     style={{
-                        width: 40,
+                        width: "auto",
                         height: 40,
                         objectFit: "contain"
                     }}
