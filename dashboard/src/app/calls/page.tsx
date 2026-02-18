@@ -21,19 +21,7 @@ import {
     Loader2
 } from "lucide-react";
 import { API_BASE_URL, fetcher } from "@/lib/api";
-
-interface CallRecord {
-    call_id: string;
-    agent_id: string;
-    business_type: string;
-    started_at: string;
-    duration_seconds: number;
-    outcome: "booked" | "transferred" | "completed" | "hung_up" | "in_progress";
-    total_turns: number;
-    transcript: { role: string; text: string; ts: string }[];
-    states_visited: string[];
-}
-
+import type { CallRecord } from "@/lib/types";
 
 
 const TYPE_ICONS: Record<string, any> = {

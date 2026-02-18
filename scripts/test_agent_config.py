@@ -28,7 +28,7 @@ async def test_llm_tool_selection():
     try:
         llm = GoogleVertexLLMService(
             credentials_path="service_account.json",
-            project_id=os.getenv("GCP_PROJECT_ID", "divine-apogee-480205-h8"),
+            project_id=os.getenv("GCP_PROJECT_ID"),
             location=os.getenv("GCP_LOCATION", "us-central1"),
             model="gemini-2.0-flash",
             tools=[{"function_declarations": tools}] if tools else None,
