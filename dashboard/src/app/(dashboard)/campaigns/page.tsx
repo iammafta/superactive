@@ -7,19 +7,9 @@ import {
     createCampaign, uploadContacts,
     startCampaign, pauseCampaign, resumeCampaign, deleteCampaign, resetCampaign
 } from "@/lib/api";
+import type { CampaignConfig } from "@/lib/types";
 
-// Types matching backend models
-interface Campaign {
-    id: string;
-    name: string;
-    agent_id: string;
-    status: "draft" | "active" | "paused" | "completed";
-    total_contacts: number;
-    called: number;
-    booked: number;
-    failed: number;
-    created_at: string;
-}
+type Campaign = CampaignConfig;
 
 interface Agent {
     id: string;

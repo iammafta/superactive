@@ -1,0 +1,67 @@
+# SaaS Foundation Implementation Plan
+
+## Goal
+Transition Superactive from a single-tenant, file-based prototype to a multi-tenant, database-backed SaaS application ready for Phase 4 (Dashboard).
+
+## User Review Required
+> [!IMPORTANT]
+> **Database**: We are using SQLite (`aiosqlite`) for the MVP. Migration to PostgreSQL is designed to be a simple driver swap later.
+> **Auth**: JWT-based authentication is now enforced on all API routes except telephony webhooks (Twilio).
+> **Data Migration**: On first startup, existing JSON files in `agents/` and `data/` will be imported into the DB automatically.
+
+## Architecture Guidelines
+- **Tenant Isolation**: Every database table (except Tenants itself) has a `tenant_id` column. API routes strictly filter by `request.user.tenant_id`.
+- **Async First**: All database I/O is asynchronous to prevent blocking the event loop during voice processing.
+- **Telephony Handling**: Twilio webhooks remain public but are secured by internal logic (validating Agent ID exists).
+
+## Proposed Changes
+
+### Backend (Python)
+#### [MODIFY] [db.py](file:///Users/maftaalif/Documents/Superactive/db.py)
+- Implements `init_db`, schema definitions, and async CRUD.
+- Handles one-time migration from legacy JSON files.
+
+#### [MODIFY] [auth.py](file:///Users/maftaalif/Documents/Superactive/auth.py)
+- Provides `hash_password`, `verify_password`, `create_token`.
+- Exports `get_current_user` dependency for FastAPI.
+
+#### [MODIFY] Config Modules
+- `agent_config.py`: Replaced file I/O with `db_load_agent` / `db_save_agent`.
+- `campaign_config.py`: Replaced file I/O with `db_load_campaign`.
+- `tool_registry.py`: Replaced local logging with `db_log_lead`.
+
+#### [MODIFY] Routes
+- `routes/auth.py`: New endpoints for Register/Login.
+- `routes/agents.py`, `campaigns.py`, `settings.py`: Secured with `Depends(get_current_user)`.
+- `routes/telephony.py`: Updated to `await load_agent()` and handle tenant context injection.
+
+### Frontend (Next.js Dashboard) - *Phase 4*
+To securely integrate JWT authentication with the Next.js App Router, we will use Route Groups and cookies:
+
+- **Route Restructuring**:
+  - Move existing app routes (`page.tsx`, `agents/`, `campaigns/`, etc.) into a new `(dashboard)` route group.
+  - Move the `Sidebar` and main layout logic into `(dashboard)/layout.tsx` so auth pages don't show the dashboard sidebar.
+  - Create an `(auth)` route group for `login` and `register` pages with a clean, centered layout.
+  
+- **New Files**:
+  - `src/middleware.ts`: Reads the JWT cookie (`superactive_auth`). Redirects to `/login` if missing/invalid, or to `/` if logged in and visiting auth pages.
+  - `src/app/(auth)/login/page.tsx`: Dynamic login form.
+  - `src/app/(auth)/register/page.tsx`: Dynamic registration form.
+  - `src/lib/api.ts` (or similar): Update the global fetch wrapper to automatically include the `superactive_auth` cookie or Authorization header in all requests.
+
+- **Sidebar Updates**:
+  - Add a logout button that clears the cookie and redirects to `/login`.
+  - Fetch and display the current user's business name using the `/api/auth/me` endpoint.
+
+## Verification Plan
+
+### Automated Tests
+1. **Dependency Check**: Ensure `aiosqlite` and `pyjwt` are installed.
+2. **Startup Test**: Run `python server.py` and check logs for "Database initialized".
+3. **Migration Test**: Verify `superactive.db` is created and populated.
+
+### Manual Verification
+1. **API Auth**: Try to access `/api/agents` without a token (should 401).
+2. **Login**: Register a new user at `/api/auth/register` and get a token.
+3. **Voice Call**: Call the Twilio number and confirm the agent still picks up (DB read success).
+4. **Dashboard**: Log in via the new UI (once implemented).

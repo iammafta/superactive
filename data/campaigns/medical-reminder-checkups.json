@@ -2,18 +2,27 @@
   "id": "medical-reminder-checkups",
   "name": "Annual Checkup Reminders",
   "agent_id": "medical_receptionist",
-  "status": "draft",
+  "status": "completed",
   "contacts": [
-    {"phone": "+13472578452", "name": "Mafta Alif", "status": "pending", "call_sid": null, "outcome": null, "extra": {"last_visit": "2025-03-15", "doctor": "Dr. Smith"}},
-    {"phone": "+13472578452", "name": "Mafta (Follow-up)", "status": "pending", "call_sid": null, "outcome": null, "extra": {"last_visit": "2025-06-01", "doctor": "Dr. Patel"}},
-    {"phone": "+13472578452", "name": "Mafta (New Patient)", "status": "pending", "call_sid": null, "outcome": null, "extra": {"referral": "Dr. Johnson"}},
-    {"phone": "+13472578452", "name": "Mafta (Dental Ref)", "status": "pending", "call_sid": null, "outcome": null, "extra": {"last_visit": "2025-01-10", "doctor": "Dr. Lee"}}
+    {
+      "phone": "+13472578452",
+      "name": "Mafta Alif",
+      "status": "completed",
+      "call_sid": "CA1d6b080c1600428b368ddb3298a53b99",
+      "outcome": "dialed",
+      "extra": {
+        "last_visit": "2025-03-15",
+        "doctor": "Dr. Smith"
+      }
+    }
   ],
-  "total_contacts": 4,
-  "called": 0,
+  "total_contacts": 1,
+  "called": 1,
   "booked": 0,
   "failed": 0,
-  "schedule": {"max_concurrent": 2},
-  "created_at": "2026-02-18T09:00:00",
-  "updated_at": "2026-02-18T14:00:00"
+  "schedule": {
+    "max_concurrent": 1
+  },
+  "created_at": "2026-02-18T19:00:00",
+  "updated_at": "2026-02-18T23:46:31.231762"
 }

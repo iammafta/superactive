@@ -2,8 +2,14 @@
 // Use NEXT_PUBLIC_API_URL or fallback to 127.0.0.1
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8765/api";
 
+function getAuthHeader(): Record<string, string> {
+    if (typeof document === "undefined") return {};
+    const match = document.cookie.match(/(?:^|; )superactive_auth=([^;]*)/);
+    return match ? { Authorization: `Bearer ${match[1]}` } : {};
+}
+
 export async function fetcher<T>(url: string): Promise<T> {
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: { ...getAuthHeader() } });
     if (!res.ok) {
         throw new Error("Failed to fetch data");
     }
@@ -11,9 +17,14 @@ export async function fetcher<T>(url: string): Promise<T> {
 }
 
 async function mutate(url: string, method: string, body?: unknown) {
+    const headers: Record<string, string> = { ...getAuthHeader() };
+    if (body) {
+        headers["Content-Type"] = "application/json";
+    }
+
     const res = await fetch(url, {
         method,
-        headers: body ? { "Content-Type": "application/json" } : undefined,
+        headers,
         body: body ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {
@@ -62,6 +73,7 @@ export async function uploadContacts(campaignId: string, csvFile: File) {
     formData.append("file", csvFile);
     const res = await fetch(`${API_BASE_URL}/campaigns/${campaignId}/upload-contacts`, {
         method: "POST",
+        headers: { ...getAuthHeader() },
         body: formData,
     });
     if (!res.ok) {
@@ -85,4 +97,14 @@ export async function resumeCampaign(id: string) {
 
 export async function resetCampaign(id: string) {
     return mutate(`${API_BASE_URL}/campaigns/${id}/reset`, "POST");
+}
+
+// ── Settings ─────────────────────────────────────────────────────
+
+export async function saveSettings(data: {
+    business_name?: string;
+    owner_email?: string;
+    public_url?: string;
+}) {
+    return mutate(`${API_BASE_URL}/settings`, "PUT", data);
 }

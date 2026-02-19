@@ -329,7 +329,10 @@ export default function DashboardPage() {
         </div>
     );
 
-    const costSavings = Math.round(data.total_calls * 2.8); // ~$2.80 saved per AI call vs human
+    // Real cost from call logger vs $3/min human agent benchmark
+    const actualCost = data.total_cost || 0;
+    const humanEquivalent = Math.round((data.avg_duration || 120) / 60 * 3 * data.total_calls); // $3/min human agent
+    const costSavings = Math.max(0, humanEquivalent - Math.round(actualCost));
 
     return (
         <div>

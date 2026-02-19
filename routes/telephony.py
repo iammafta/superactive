@@ -5,13 +5,19 @@ Superactive — Telephony Routes (incoming calls, WebSocket, outbound)
 import os
 import re
 import uuid
+import json
 
-from fastapi import APIRouter, WebSocket, Request, HTTPException
+from fastapi import APIRouter, WebSocket, Request, HTTPException, Depends
 from fastapi.responses import HTMLResponse
 from loguru import logger
 from pydantic import BaseModel
 from urllib.parse import unquote
-from xml.sax.saxutils import escape as xml_escape
+from xml.sax.saxutils import escape as _xml_escape
+from twilio.request_validator import RequestValidator
+
+def xml_escape(s: str) -> str:
+    """Escape a string for safe use inside an XML attribute value (double-quoted)."""
+    return _xml_escape(s, {'"': '&quot;', "'": '&apos;'})
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
@@ -75,6 +81,31 @@ async def health():
 async def incoming_call(request: Request):
     """Handle incoming Twilio call — return TwiML to connect to WebSocket.
     Passes agent_id via custom parameters if specified."""
+    # 1. Validate Twilio Signature
+    if os.getenv("TWILIO_VALIDATION", "true").lower() != "false":
+        auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
+        if auth_token:
+            validator = RequestValidator(auth_token)
+            signature = request.headers.get("X-Twilio-Signature", "")
+            
+            public_url = os.getenv("PUBLIC_URL", "")
+            if public_url:
+                url = f"{public_url.rstrip('/')}{request.url.path}"
+                if request.url.query:
+                    url += f"?{request.url.query}"
+            else:
+                url = str(request.url)
+            
+            if request.method == "POST":
+                form_data = await request.form()
+                params = dict(form_data)
+            else:
+                params = {}
+                
+            if not validator.validate(url, params, signature):
+                logger.warning(f"🚨 Invalid Twilio signature for URL: {url}")
+                raise HTTPException(status_code=403, detail="Invalid Twilio signature")
+
     public_url = os.getenv("PUBLIC_URL", "")
     if public_url:
         ws_host = public_url.replace("https://", "").replace("http://", "").rstrip("/")
@@ -88,6 +119,7 @@ async def incoming_call(request: Request):
     agent_id = request.query_params.get("agent_id", "")
     outbound = request.query_params.get("outbound", "")
     contact_name = request.query_params.get("contact_name", "")
+    contact_extra = request.query_params.get("contact_extra", "")
 
     param_tags = []
     if agent_id:
@@ -96,6 +128,8 @@ async def incoming_call(request: Request):
         param_tags.append(f'<Parameter name="outbound" value="{xml_escape(outbound)}" />')
     if contact_name:
         param_tags.append(f'<Parameter name="contact_name" value="{xml_escape(contact_name)}" />')
+    if contact_extra:
+        param_tags.append(f'<Parameter name="contact_extra" value="{xml_escape(contact_extra)}" />')
     custom_params = "\n            ".join(param_tags)
 
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -128,21 +162,28 @@ async def websocket_endpoint(websocket: WebSocket):
     agent_id = custom_params.get("agent_id", None)
     is_outbound = custom_params.get("outbound", "") == "1"
     contact_name = unquote(custom_params.get("contact_name", ""))
-    logger.info(f"🔍 Custom params: {custom_params} → agent_id={agent_id} outbound={is_outbound} contact={contact_name}")
+    contact_extra_raw = unquote(custom_params.get("contact_extra", ""))
+    contact_extra = {}
+    if contact_extra_raw:
+        try:
+            contact_extra = json.loads(contact_extra_raw)
+        except Exception:
+            pass
+    logger.info(f"🔍 Custom params: {custom_params} → agent_id={agent_id} outbound={is_outbound} contact={contact_name} extra={contact_extra}")
 
     if agent_id:
-        agent_config = load_agent(agent_id)
+        agent_config = await load_agent(agent_id)
         if not agent_config:
             logger.warning(f"Agent {agent_id} not found, using default")
-            agent_config = get_default_agent()
+            agent_config = await get_default_agent()
     else:
-        agent_config = get_default_agent()
+        agent_config = await get_default_agent()
 
     logger.info(f"🤖 Using agent: {agent_config.name} ({agent_config.id}) | "
                 f"Guardrail: {agent_config.guardrail_level} | Outbound: {is_outbound}")
 
     # Start call logging
-    call_logger.start_call(call_sid, agent_config.id, agent_config.business_type)
+    call_logger.start_call(call_sid, agent_config.id, agent_config.business_type, agent_config.tenant_id)
 
     # 2. VAD (Voice Activity Detection) — init before transport
     vad = None
@@ -150,9 +191,9 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.debug("Initializing Silero VAD...")
         vad = SileroVADAnalyzer(
             params=VADParams(
-                start_confidence=0.6,
-                stop_duration=1.0,
-                min_audio_duration=0.2,
+                start_confidence=0.7,
+                stop_duration=1.5,
+                min_audio_duration=0.5,
             )
         )
         logger.debug("Silero VAD initialized successfully")
@@ -186,29 +227,32 @@ async def websocket_endpoint(websocket: WebSocket):
 
     # 5. LLM — Gemini via Vertex AI (with config-driven prompt and tools)
     tools = get_tools_for_agent(agent_config)
-    full_prompt = agent_config.build_full_prompt(
-        current_state=agent_config.states[0].name if agent_config.states else None
-    )
+    full_prompt = agent_config.build_full_prompt()
 
     # Outbound call context — inject awareness that WE called THEM
     outbound_greeting = agent_config.greeting  # default inbound greeting
     if is_outbound:
         who = contact_name or "there"
-        biz = agent_config.business_type.replace("_", " ").title()
-        outbound_greeting = (
-            f"Hi {who}, this is {agent_config.name} calling from {biz}. "
-            f"How are you today?"
-        )
-        full_prompt += (
-            f"\n\n## OUTBOUND CALL CONTEXT\n"
+        # Build a natural outbound greeting — use the doctor/business name
+        # from contact_extra if available, falling back to generic
+        doctor_name = contact_extra.get("doctor", "")
+        if doctor_name:
+            outbound_greeting = f"Hi {who}, this is Sarah calling from {doctor_name}'s office. How are you doing?"
+        else:
+            outbound_greeting = f"Hi {who}, this is Sarah. How are you doing today?"
+        context_lines = [
             f"IMPORTANT: You are making an OUTBOUND call. YOU called the customer, "
-            f"they did NOT call you. The customer's name is {who}. "
-            f"Introduce yourself, explain why you're calling, and be respectful of their time. "
-            f"If they say they didn't call or seem confused, clarify: 'I apologize for any confusion — "
-            f"we're reaching out to you from {biz}.' "
-            f"Never say 'thank you for calling' — YOU initiated this call."
-        )
-        logger.info(f"📤 Outbound mode: greeting='{outbound_greeting[:60]}...' contact={who}")
+            f"they did NOT call you. The customer's name is {who}.",
+            f"Your name is Sarah. Use it if asked who you are.",
+            f"You already know why you're calling — explain it naturally when they answer.",
+            f"Do NOT ask 'how can I help you?' — YOU called THEM.",
+            f"Never say 'thank you for calling' — YOU initiated this call.",
+        ]
+        if contact_extra:
+            extra_lines = [f"  - {k.replace('_', ' ').title()}: {v}" for k, v in contact_extra.items()]
+            context_lines.append("What you know about this customer:\n" + "\n".join(extra_lines))
+        full_prompt += "\n\n## OUTBOUND CALL CONTEXT\n" + "\n".join(context_lines)
+        logger.info(f"📤 Outbound mode: greeting='{outbound_greeting[:60]}...' contact={who} extra={contact_extra}")
 
     llm = GoogleVertexLLMService(
         credentials_path=CREDENTIALS_PATH,
@@ -220,7 +264,7 @@ async def websocket_endpoint(websocket: WebSocket):
     )
 
     # Register tool handlers (only the ones this agent is allowed to use)
-    register_tools_for_agent(llm, agent_config, call_id=call_sid, call_logger=call_logger)
+    register_tools_for_agent(llm, agent_config, call_id=call_sid, call_logger=call_logger, call_sid=call_sid)
 
     # 6. TTS — Google Cloud Text-to-Speech
     tts = GoogleHttpTTSService(
@@ -320,16 +364,18 @@ async def websocket_endpoint(websocket: WebSocket):
 
 # ── Outbound Calls ────────────────────────────────────────────────────
 
+from auth import get_current_user, UserContext
+
 class OutboundCallRequest(BaseModel):
     to: str                  # Phone number to call
     agent_id: str            # Which agent config to use
 
 
 @router.post("/api/outbound-call")
-async def api_outbound_call(req: OutboundCallRequest):
+async def api_outbound_call(req: OutboundCallRequest, user: UserContext = Depends(get_current_user)):
     """Trigger an outbound call using a specific agent."""
     # Verify agent exists
-    agent = load_agent(req.agent_id)
+    agent = await load_agent(req.agent_id, user.tenant_id)
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent '{req.agent_id}' not found")
 

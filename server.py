@@ -1,13 +1,15 @@
 """
-Superactive — AI Voice Agent Server
-Phase 3: Configurable Agent Platform
+Superactive -- AI Voice Agent Server
+Phase 4: SaaS Foundation
 
-Config-driven agents with tool calling, state machine, and call logging.
+Config-driven agents with tool calling, state machine, call logging,
+SQLite database, and JWT authentication.
 Route modules handle individual API domains.
 """
 
 import os
 import sys
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -18,18 +20,39 @@ from loguru import logger
 logger.remove()
 logger.add(sys.stderr, level="DEBUG")
 
-# Pipecat logging (INFO level — DEBUG floods the event loop)
+# Pipecat logging (INFO level -- DEBUG floods the event loop)
 import logging
 logging.basicConfig(level=logging.INFO)
 
+from db import init_db
 from routes import all_routers
 
-app = FastAPI(title="Superactive", version="3.0")
 
-# CORS for dashboard
+# ── Lifespan (startup / shutdown) ─────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize database on startup, cleanup on shutdown."""
+    logger.info("🚀 Superactive starting up...")
+    await init_db()
+    logger.info("✅ Database ready")
+    yield
+    logger.info("🛑 Superactive shutting down")
+
+
+app = FastAPI(title="Superactive", version="4.0", lifespan=lifespan)
+
+# ── CORS ──────────────────────────────────────────────────────────────
+# In production, lock to the dashboard origin. In dev, allow all.
+DASHBOARD_URL = os.getenv("DASHBOARD_URL", "")
+allowed_origins = (
+    [DASHBOARD_URL] if DASHBOARD_URL
+    else ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Lock down in production
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -9,7 +9,10 @@ load_dotenv()
 account_sid = os.getenv("TWILIO_ACCOUNT_SID")
 auth_token = os.getenv("TWILIO_AUTH_TOKEN")
 phone_number = os.getenv("TWILIO_PHONE_NUMBER")
-ngrok_url = os.getenv("PUBLIC_URL", "https://carlena-unadmonished-translationally.ngrok-free.dev")
+ngrok_url = os.getenv("PUBLIC_URL")
+if not ngrok_url:
+    print("Error: PUBLIC_URL not set in .env")
+    sys.exit(1)
 
 if not all([account_sid, auth_token, phone_number]):
     print("Error: Missing Twilio credentials in .env")

@@ -1,21 +1,22 @@
 """
 Superactive — Agent Configuration System
 
-Pydantic models for config-driven agents. Each business gets their own
-agent config (JSON) that controls persona, guardrails, tools, and state flow.
+Pydantic models for config-driven agents.
+Persisted in SQLite via db.py.
 """
 
 import json
-import os
-from pathlib import Path
 from typing import Optional
-
 from pydantic import BaseModel, Field
 from loguru import logger
 
-
-AGENTS_DIR = Path(__file__).parent / "agents"
-
+# Import DB layer
+from db import (
+    db_load_agent,
+    db_save_agent,
+    db_list_agents,
+    db_delete_agent
+)
 
 # ── State Machine Config ──────────────────────────────────────────────
 
@@ -34,11 +35,14 @@ class StateConfig(BaseModel):
 
 # ── Agent Config ──────────────────────────────────────────────────────
 
+import uuid
+
 class AgentConfig(BaseModel):
     """Full agent configuration — one per business use case."""
 
     # Identity
-    id: str                                      # "dr_smith_reception"
+    id: str = Field(default_factory=lambda: str(uuid.uuid4())) # Globally unique UUID or slug
+    tenant_id: str                               # Owner
     name: str                                    # "Dr. Smith's Receptionist"
     business_type: str                           # "medical" | "restaurant" | "insurance"
 
@@ -105,14 +109,13 @@ class AgentConfig(BaseModel):
                 "You may assist with general inquiries while representing the business."
             )
 
-    def build_full_prompt(self, current_state: Optional[str] = None) -> str:
-        """Build the complete system prompt with guardrail and state context."""
+    def build_full_prompt(self) -> str:
+        """Build the system prompt with personality, guardrails, and flow rules."""
         parts = [self.system_prompt]
-        
-        # Inject context
+
         from datetime import datetime
         parts.append(f"\nCurrent Date: {datetime.now().strftime('%Y-%m-%d')}")
-        
+
         parts.append(f"\n\n## Guardrails\n{self.get_guardrail_instruction()}")
 
         if self.escalation_triggers:
@@ -122,114 +125,92 @@ class AgentConfig(BaseModel):
                 "immediately offer to transfer them to a human representative."
             )
 
-        if current_state and self.states:
-            state_cfg = next((s for s in self.states if s.name == current_state), None)
-            if state_cfg:
-                parts.append(f"\n\n## Current State: {state_cfg.name}\n{state_cfg.instructions}")
-                if state_cfg.required_info:
-                    info = ", ".join(state_cfg.required_info)
-                    parts.append(f"\nYou need to collect: {info}")
-                
-                # Dynamic transition instructions
-                if state_cfg.transitions:
-                    trans_list = []
-                    for event, next_state in state_cfg.transitions.items():
-                        trans_list.append(f"- If {event}: Output [TRANSITION: {next_state}]")
-                    parts.append("\n\n## Transitions\n" + "\n".join(trans_list))
-                    parts.append("\nIMPORTANT: To move to the next state, you MUST output the transition tag exactly as shown.")
-                else:
-                    # Terminal state
-                    parts.append("\n\n## Ending the Call\nIf the conversation is finished, output [HANGUP].")
-                    
+        if self.states:
+            parts.append(
+                "\n\n## Conversation Flow\n"
+                "You are in a structured conversation with defined phases. "
+                "During the conversation, you'll receive coaching notes in parentheses — "
+                "these are your inner thoughts guiding the conversation naturally. Follow "
+                "their guidance but never read them aloud or reference them to the caller.\n"
+                "When a transition condition is met, output the transition tag "
+                "EXACTLY as shown. Example: [TRANSITION: next_state]\n"
+                "When the conversation is complete, output [HANGUP].\n"
+                "NEVER repeat a question the caller already answered. "
+                "If they told you something, acknowledge it and move on to the NEXT question.\n"
+                "Use brief acknowledgments like 'sure', 'got it', 'absolutely' to show you're listening."
+            )
+
         return "\n".join(parts)
 
 
-# ── CRUD Operations ──────────────────────────────────────────────────
+# ── CRUD Operations (Async + DB) ─────────────────────────────────────
 
-def _ensure_agents_dir():
-    """Create agents directory if it doesn't exist."""
-    AGENTS_DIR.mkdir(exist_ok=True)
-
-
-def load_agent(agent_id: str) -> Optional[AgentConfig]:
-    """Load an agent config from JSON file."""
-    path = AGENTS_DIR / f"{agent_id}.json"
-    if not path.exists():
-        logger.warning(f"Agent config not found: {agent_id}")
+async def load_agent(agent_id: str, tenant_id: str = None) -> Optional[AgentConfig]:
+    """Load an agent config from DB.
+    
+    If tenant_id is provided, ensures ownership.
+    If tenant_id is None (telephony), finds by ID (assumes valid global ID).
+    """
+    data = await db_load_agent(agent_id, tenant_id)
+    if not data:
         return None
     try:
-        data = json.loads(path.read_text())
         return AgentConfig(**data)
     except Exception as e:
-        logger.error(f"Failed to load agent {agent_id}: {e}")
+        logger.error(f"Failed to parse agent {agent_id}: {e}")
         return None
 
 
-def save_agent(config: AgentConfig) -> bool:
-    """Save an agent config to JSON file."""
-    _ensure_agents_dir()
-    path = AGENTS_DIR / f"{config.id}.json"
-    try:
-        path.write_text(config.model_dump_json(indent=2))
-        logger.info(f"Saved agent config: {config.id}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to save agent {config.id}: {e}")
+async def save_agent(config: AgentConfig, tenant_id: str) -> bool:
+    """Save an agent config to DB."""
+    # Enforce tenant ownership
+    if config.tenant_id != tenant_id:
+        logger.error(f"Tenant mismatch: {config.tenant_id} != {tenant_id}")
         return False
+        
+    return await db_save_agent(config.model_dump(), tenant_id)
 
 
-def list_agents() -> list[AgentConfig]:
-    """List all available agent configs."""
-    _ensure_agents_dir()
+async def list_agents(tenant_id: str) -> list[AgentConfig]:
+    """List all agents for a tenant."""
+    rows = await db_list_agents(tenant_id)
     agents = []
-    for path in AGENTS_DIR.glob("*.json"):
+    for row in rows:
         try:
-            data = json.loads(path.read_text())
-            agents.append(AgentConfig(**data))
+            agents.append(AgentConfig(**row))
         except Exception as e:
-            logger.error(f"Failed to load {path.name}: {e}")
+            logger.error(f"Skipping invalid agent: {e}")
     return agents
 
 
-def delete_agent(agent_id: str) -> bool:
+async def delete_agent(agent_id: str, tenant_id: str) -> bool:
     """Delete an agent config."""
-    path = AGENTS_DIR / f"{agent_id}.json"
-    if path.exists():
-        path.unlink()
-        logger.info(f"Deleted agent config: {agent_id}")
-        return True
-    return False
+    return await db_delete_agent(agent_id, tenant_id)
 
 
-def get_default_agent() -> AgentConfig:
-    """Return a default agent config when no specific one is requested."""
-    agents = list_agents()
+async def get_default_agent() -> AgentConfig:
+    """Return a default agent config when no specific one is requested.
     
-    # Prefer debug_chat if available
-    debug_agent = next((a for a in agents if a.id == "debug_chat"), None)
-    if debug_agent:
-        return debug_agent
-        
-    if agents:
-        return agents[0]
+    WARNING: usage of this without tenant context is dangerous in multi-tenant mode.
+    Mainly for fallback/debug.
+    """
+    # This is tricky because we don't know the tenant.
+    # We'll just try to load "debug_chat" from any tenant.
+    agent = await load_agent("debug_chat")
+    if agent:
+        return agent
 
-    # Fallback — the original Sarah persona
-    return load_agent("debug_chat") or AgentConfig(
+    # Fallback in-memory
+    return AgentConfig(
         id="debug_chat",
+        tenant_id="default",
         name="Debug Chat Agent",
         business_type="debug",
         system_prompt=(
             "You are the Debug Chat Agent. You have access to a 'google_search' tool. "
-            "IMPORTANT: This tool is POWERFUL. It uses Tavily and Google under the hood. "
-            "Use 'google_search' for: "
-            "1. Real-time news (e.g. 'Who won the game?') "
-            "2. Company data (e.g. 'Funding rounds for Anthropic') "
-            "3. Fact checking (e.g. 'Who is president?') "
-            "Do NOT say 'I only have google search'. Just USE the tool for any search request. "
-            "You are helpful, knowledgeable, and ready to test system capabilities."
+            "Use it for real-time data."
         ),
-        greeting="Hello, I am the Debug Chat Agent. Ask me anything!",
+        greeting="Hello, I am the Debug Chat Agent.",
         guardrail_level=0.0,
         allowed_tools=["google_search"],
     )
-

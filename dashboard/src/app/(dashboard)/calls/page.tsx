@@ -1,15 +1,11 @@
 "use client";
 
-import { useState } from "react";
-
+import { useState, useMemo } from "react";
 import useSWR from "swr";
 import {
     Search,
     Filter,
-    Phone,
-    Clock,
     MessageSquare,
-    User,
     Bot,
     Shield,
     Stethoscope,
@@ -18,16 +14,20 @@ import {
     XCircle,
     ArrowRightCircle,
     HelpCircle,
-    Loader2
+    Loader2,
+    ArrowUpDown,
+    ArrowUp,
+    ArrowDown,
+    Gift
 } from "lucide-react";
 import { API_BASE_URL, fetcher } from "@/lib/api";
 import type { CallRecord } from "@/lib/types";
-
 
 const TYPE_ICONS: Record<string, any> = {
     insurance: Shield,
     medical: Stethoscope,
     restaurant: Utensils,
+    general: Bot,
 };
 
 function formatDuration(seconds: number): string {
@@ -40,7 +40,7 @@ function formatDate(isoString: string): string {
     return new Date(isoString).toLocaleString();
 }
 
-const OUTCOME_STYLES = {
+const OUTCOME_STYLES: Record<string, { color: string; bg: string; border: string; icon: any }> = {
     booked: { color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20", icon: CheckCircle },
     transferred: { color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20", icon: ArrowRightCircle },
     completed: { color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", icon: CheckCircle },
@@ -48,10 +48,83 @@ const OUTCOME_STYLES = {
     in_progress: { color: "text-gray-400", bg: "bg-gray-500/10", border: "border-gray-500/20", icon: HelpCircle },
 };
 
+type SortKey = "started_at" | "agent_id" | "duration_seconds" | "outcome" | "total_turns";
+type SortDir = "asc" | "desc";
+
 export default function CallsPage() {
-    const { data: calls, error } = useSWR<CallRecord[]>(`${API_BASE_URL}/calls`, fetcher);
+    const { data: calls, error } = useSWR<CallRecord[]>(
+        `${API_BASE_URL}/calls`,
+        fetcher,
+        { refreshInterval: 5000 }  // Auto-refresh every 5s
+    );
     const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
     const [filter, setFilter] = useState("all");
+    const [search, setSearch] = useState("");
+    const [sortKey, setSortKey] = useState<SortKey>("started_at");
+    const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+    const handleSort = (key: SortKey) => {
+        if (sortKey === key) {
+            setSortDir(sortDir === "asc" ? "desc" : "asc");
+        } else {
+            setSortKey(key);
+            setSortDir(key === "started_at" ? "desc" : "asc");
+        }
+    };
+
+    const SortIcon = ({ column }: { column: SortKey }) => {
+        if (sortKey !== column) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
+        return sortDir === "asc"
+            ? <ArrowUp className="w-3 h-3 text-blue-400" />
+            : <ArrowDown className="w-3 h-3 text-blue-400" />;
+    };
+
+    // Filter + search + sort
+    const processedCalls = useMemo(() => {
+        if (!calls) return [];
+        let result = [...calls];
+
+        // Filter by outcome
+        if (filter !== "all") {
+            result = result.filter((c) => c.outcome === filter);
+        }
+
+        // Search by agent name or call ID
+        if (search.trim()) {
+            const q = search.toLowerCase();
+            result = result.filter(
+                (c) =>
+                    c.agent_id.toLowerCase().includes(q) ||
+                    c.call_id.toLowerCase().includes(q) ||
+                    c.business_type.toLowerCase().includes(q)
+            );
+        }
+
+        // Sort
+        result.sort((a, b) => {
+            let cmp = 0;
+            switch (sortKey) {
+                case "started_at":
+                    cmp = new Date(a.started_at).getTime() - new Date(b.started_at).getTime();
+                    break;
+                case "agent_id":
+                    cmp = a.agent_id.localeCompare(b.agent_id);
+                    break;
+                case "duration_seconds":
+                    cmp = a.duration_seconds - b.duration_seconds;
+                    break;
+                case "outcome":
+                    cmp = a.outcome.localeCompare(b.outcome);
+                    break;
+                case "total_turns":
+                    cmp = a.total_turns - b.total_turns;
+                    break;
+            }
+            return sortDir === "asc" ? cmp : -cmp;
+        });
+
+        return result;
+    }, [calls, filter, search, sortKey, sortDir]);
 
     if (error) return <div className="p-8 text-red-400">Failed to load calls.</div>;
     if (!calls) return (
@@ -61,8 +134,6 @@ export default function CallsPage() {
         </div>
     );
 
-    const filteredCalls = filter === "all" ? calls : calls.filter((c) => c.outcome === filter);
-
     return (
         <div className="flex h-[calc(100vh-140px)] gap-6">
             {/* Left: List */}
@@ -71,14 +142,18 @@ export default function CallsPage() {
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h1 className="text-2xl font-bold mb-1 text-white">Call History</h1>
-                        <p className="text-sm text-gray-400">Review past conversations</p>
+                        <p className="text-sm text-gray-400">
+                            {processedCalls.length} of {calls.length} calls
+                        </p>
                     </div>
                     <div className="flex gap-3">
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                             <input
                                 type="text"
-                                placeholder="Search..."
+                                placeholder="Search agents..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
                                 className="pl-9 pr-4 py-2 bg-black/20 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
                             />
                         </div>
@@ -105,15 +180,50 @@ export default function CallsPage() {
                         <table className="w-full text-left border-collapse">
                             <thead className="sticky top-0 bg-[#0f0f11] z-10 text-xs uppercase text-gray-500 font-semibold border-b border-white/5">
                                 <tr>
-                                    <th className="p-4 pl-6">Agent</th>
-                                    <th className="p-4">Time</th>
-                                    <th className="p-4">Duration</th>
-                                    <th className="p-4">Outcome</th>
-                                    <th className="p-4 text-right pr-6">Turns</th>
+                                    <th
+                                        className="p-4 pl-6 cursor-pointer hover:text-gray-300 transition-colors select-none"
+                                        onClick={() => handleSort("agent_id")}
+                                    >
+                                        <span className="flex items-center gap-1.5">
+                                            Agent <SortIcon column="agent_id" />
+                                        </span>
+                                    </th>
+                                    <th
+                                        className="p-4 cursor-pointer hover:text-gray-300 transition-colors select-none"
+                                        onClick={() => handleSort("started_at")}
+                                    >
+                                        <span className="flex items-center gap-1.5">
+                                            Time <SortIcon column="started_at" />
+                                        </span>
+                                    </th>
+                                    <th
+                                        className="p-4 cursor-pointer hover:text-gray-300 transition-colors select-none"
+                                        onClick={() => handleSort("duration_seconds")}
+                                    >
+                                        <span className="flex items-center gap-1.5">
+                                            Duration <SortIcon column="duration_seconds" />
+                                        </span>
+                                    </th>
+                                    <th
+                                        className="p-4 cursor-pointer hover:text-gray-300 transition-colors select-none"
+                                        onClick={() => handleSort("outcome")}
+                                    >
+                                        <span className="flex items-center gap-1.5">
+                                            Outcome <SortIcon column="outcome" />
+                                        </span>
+                                    </th>
+                                    <th
+                                        className="p-4 text-right pr-6 cursor-pointer hover:text-gray-300 transition-colors select-none"
+                                        onClick={() => handleSort("total_turns")}
+                                    >
+                                        <span className="flex items-center gap-1.5 justify-end">
+                                            Turns <SortIcon column="total_turns" />
+                                        </span>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-white/5">
-                                {filteredCalls.map((call) => {
+                                {processedCalls.map((call) => {
                                     const style = OUTCOME_STYLES[call.outcome] || OUTCOME_STYLES.in_progress;
                                     const OutcomeIcon = style.icon;
                                     const AgentIcon = TYPE_ICONS[call.business_type] || Bot;
@@ -134,7 +244,7 @@ export default function CallsPage() {
                                                     </div>
                                                     <div>
                                                         <div className="font-medium text-white text-sm">
-                                                            {call.agent_id}
+                                                            {call.agent_id.replace(/_/g, " ")}
                                                         </div>
                                                         <div className="text-xs text-gray-500 capitalize">
                                                             {call.business_type}
@@ -222,7 +332,7 @@ export default function CallsPage() {
                                             {state}
                                         </div>
                                         {i < selectedCall.states_visited.length - 1 && (
-                                            <span className="text-gray-600">→</span>
+                                            <span className="text-gray-600">&rarr;</span>
                                         )}
                                     </div>
                                 ))

@@ -1,6 +1,7 @@
 aiofiles==24.1.0
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.3
+aiosqlite==0.21.0
 aiohttp-retry==2.9.1
 aiosignal==1.4.0
 annotated-doc==0.0.4

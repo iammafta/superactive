@@ -45,6 +45,8 @@ export interface CallRecord {
     repeat_detected: boolean;
     tools_used: string[];
     transcript: { role: string; text: string; ts: string }[];
+    cost_per_minute: number;
+    cost_estimate: number;
 }
 
 export interface CampaignConfig {
@@ -67,6 +69,8 @@ export interface AnalyticsData {
     avg_duration: number;
     booking_rate: number;
     frustration_rate: number;
+    total_cost: number;
+    avg_cost_per_call: number;
     outcomes: {
         booked: number;
         transferred: number;
