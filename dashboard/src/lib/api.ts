@@ -28,8 +28,21 @@ async function mutate(url: string, method: string, body?: unknown) {
         body: body ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: "Unknown error" }));
-        throw new Error(err.detail || `${method} failed`);
+        let errMessage = `${method} failed`;
+        try {
+            const err = await res.json();
+            if (err.detail) {
+                // FastAPI 422 validation errors are arrays
+                if (Array.isArray(err.detail)) {
+                    errMessage = err.detail.map((e: any) => `${e.loc.join('.')}: ${e.msg}`).join(', ');
+                } else {
+                    errMessage = String(err.detail);
+                }
+            }
+        } catch (e) {
+            // keep standard failure
+        }
+        throw new Error(errMessage);
     }
     return res.json();
 }

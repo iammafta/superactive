@@ -357,7 +357,7 @@ export default function AgentEditorPage() {
             const id = isNew
                 ? (form.name || "agent").toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")
                 : agentId;
-            const payload = { ...form, id };
+            const payload = { ...form, id, tenant_id: "" };
             if (isNew) {
                 await createAgent(payload);
             } else {

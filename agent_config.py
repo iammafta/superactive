@@ -42,7 +42,7 @@ class AgentConfig(BaseModel):
 
     # Identity
     id: str = Field(default_factory=lambda: str(uuid.uuid4())) # Globally unique UUID or slug
-    tenant_id: str                               # Owner
+    tenant_id: str = ""                          # Owner (injected by API route)
     name: str                                    # "Dr. Smith's Receptionist"
     business_type: str                           # "medical" | "restaurant" | "insurance"
 
