@@ -5,20 +5,25 @@ export interface StateConfig {
     instructions: string;
     transitions: Record<string, string>;
     max_turns: number;
-    required_info: string[];
+    required_info: { name: string; description: string; type: string }[];
 }
 
 export interface AgentConfig {
     id: string;
     name: string;
     business_type: string;
+    agent_type: "inbound" | "outbound" | "hybrid";
     system_prompt: string;
     greeting: string;
+    outbound_greeting: string;
     voice_id: string;
     guardrail_level: number;
+    frustration_tolerance: number;
+    loop_sensitivity: number;
     allowed_tools: string[];
     webhook_url: string | null;
     webhook_headers: Record<string, string>;
+    webhook_payload_mapping: Record<string, string>;
     states: StateConfig[];
     max_turns: number;
     max_duration_seconds: number;
@@ -54,7 +59,7 @@ export interface CampaignConfig {
     name: string;
     agent_id: string;
     status: "draft" | "active" | "paused" | "completed";
-    contacts: { phone: string; name: string; status: string; [key: string]: string }[];
+    contacts: { phone: string; name: string; status: string;[key: string]: string }[];
     total_contacts: number;
     called: number;
     booked: number;
@@ -92,4 +97,5 @@ export interface AnalyticsData {
         booking_rate: string;
         frustration_rate: string;
     };
+    recent_calls: CallRecord[];
 }

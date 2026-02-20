@@ -450,7 +450,7 @@ class StateTransitionFilter(FrameProcessor):
     process the complete tag. Non-bracket text is forwarded immediately.
     """
 
-    def __init__(self, monitor: StateMachineProcessor, call_id: str = None, call_logger=None, **kwargs):
+    def __init__(self, monitor: Optional[StateMachineProcessor] = None, call_id: str = None, call_logger=None, **kwargs):
         super().__init__(**kwargs)
         self._monitor = monitor
         self._call_id = call_id
@@ -471,9 +471,12 @@ class StateTransitionFilter(FrameProcessor):
         CRITICAL: All non-TextFrame frames must be explicitly forwarded via
         push_frame(). The base class process_frame() does NOT forward frames.
         """
-        # Flush agent transcript buffer when a new user utterance arrives or call ends
+        # Flush agent transcript buffer when the LLM finishes, user speaks, or call ends
         # (this coalesces streaming token fragments into complete utterances)
-        if direction == FrameDirection.DOWNSTREAM and isinstance(frame, (TranscriptionFrame, EndFrame)):
+        if direction == FrameDirection.DOWNSTREAM and (
+            isinstance(frame, (TranscriptionFrame, EndFrame)) or 
+            type(frame).__name__ in ("LLMFullResponseEndFrame", "UserStartedSpeakingFrame", "UserStoppedSpeakingFrame")
+        ):
             self._flush_transcript_buffer()
 
         # Only intercept downstream TextFrames; forward everything else
@@ -496,6 +499,14 @@ class StateTransitionFilter(FrameProcessor):
             if self._buffering:
                 self._buffer += ch
                 if ch == "]":
+                    # We have a full tag in self._buffer
+                    # Flush clean text before processing the tag, so TTS speaks it before hangup/transition
+                    clean_text = "".join(clean_chunks)
+                    if clean_text:
+                        self._transcript_buffer += clean_text
+                        await self.push_frame(TextFrame(clean_text), direction)
+                        clean_chunks = []
+                        
                     # Complete tag captured — process it
                     await self._handle_tag(self._buffer, direction)
                     self._buffer = ""
@@ -529,7 +540,7 @@ class StateTransitionFilter(FrameProcessor):
 
         # [TRANSITION: state_name] — change state
         match = re.search(r"\[TRANSITION:\s*(\w+)\]", tag, re.IGNORECASE)
-        if match:
+        if match and self._monitor:
             new_state = match.group(1)
             logger.info(f"🔄 LLM requested transition to '{new_state}'")
             self._monitor.transition_to(new_state)
@@ -579,7 +590,8 @@ class TranscriptLoggerFilter(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         if direction == FrameDirection.DOWNSTREAM:
-            if isinstance(frame, (TranscriptionFrame, EndFrame)):
+            if (isinstance(frame, (TranscriptionFrame, EndFrame)) or 
+                type(frame).__name__ in ("LLMFullResponseEndFrame", "UserStartedSpeakingFrame", "UserStoppedSpeakingFrame")):
                 self._flush_transcript_buffer()
             elif isinstance(frame, TextFrame) and frame.text:
                 self._transcript_buffer += frame.text

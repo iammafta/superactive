@@ -112,6 +112,12 @@ export async function resetCampaign(id: string) {
     return mutate(`${API_BASE_URL}/campaigns/${id}/reset`, "POST");
 }
 
+// ── Analytics ────────────────────────────────────────────────────
+
+export async function deleteHistory() {
+    return mutate(`${API_BASE_URL}/analytics/history`, "DELETE");
+}
+
 // ── Settings ─────────────────────────────────────────────────────
 
 export async function saveSettings(data: {

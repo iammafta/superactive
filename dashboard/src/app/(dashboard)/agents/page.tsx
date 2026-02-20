@@ -12,11 +12,14 @@ import {
     GitBranch,
     Plus,
     Phone,
-    Activity
+    Activity,
+    PhoneIncoming,
+    PhoneOutgoing,
+    ArrowLeftRight
 } from "lucide-react";
 import { API_BASE_URL, fetcher } from "@/lib/api";
 import type { AgentConfig } from "@/lib/types";
-import TestCallModal from "@/components/TestCallModal";
+import TestChatModal from "@/components/TestChatModal";
 
 const TYPE_ICONS: Record<string, any> = {
     insurance: Shield,
@@ -100,65 +103,82 @@ export default function AgentsPage() {
                                             </div>
                                         </div>
                                     </div>
+                                </div>
+                                <div className="flex flex-col items-end gap-2">
                                     <span className={`badge ${agent.active ? "badge-success" : "badge-secondary"}`}>
                                         {agent.active ? "Active" : "Inactive"}
                                     </span>
-                                </div>
-
-                                {/* Description */}
-                                <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20, lineHeight: 1.5, minHeight: 40 }}>
-                                    {agent.description || "No description provided."}
-                                </p>
-
-                                {/* Trigger Call Button (Overlay) */}
-                                <div className="absolute top-4 right-20">
-                                    {/* If we want it in the header? No, let's put it at the bottom actions */}
-                                </div>
-
-                                {/* Guardrail bar */}
-                                <div style={{ marginBottom: 16 }}>
-                                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                                        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Guardrail Level</span>
-                                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
-                                            {guardrailLabel(agent.guardrail_level)} ({(agent.guardrail_level * 100).toFixed(0)}%)
+                                    {agent.agent_type === 'inbound' && (
+                                        <span className="flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                            <PhoneIncoming className="w-3 h-3" /> Inbound
                                         </span>
-                                    </div>
-                                    <div style={{ height: 6, background: "rgba(55, 65, 81, 0.5)", borderRadius: 3, overflow: "hidden" }}>
-                                        <div
-                                            style={{
-                                                width: `${agent.guardrail_level * 100}%`,
-                                                height: "100%",
-                                                borderRadius: 3,
-                                                background: `linear-gradient(to right, #10b981, #3b82f6, #6366f1)`,
-                                            }}
-                                        />
-                                    </div>
+                                    )}
+                                    {agent.agent_type === 'outbound' && (
+                                        <span className="flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                            <PhoneOutgoing className="w-3 h-3" /> Outbound
+                                        </span>
+                                    )}
+                                    {agent.agent_type === 'hybrid' && (
+                                        <span className="flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                            <ArrowLeftRight className="w-3 h-3" /> Hybrid
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Description */}
+                            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20, lineHeight: 1.5, minHeight: 40 }}>
+                                {agent.description || "No description provided."}
+                            </p>
+
+                            {/* Trigger Call Button (Overlay) */}
+                            <div className="absolute top-4 right-20">
+                                {/* If we want it in the header? No, let's put it at the bottom actions */}
+                            </div>
+
+                            {/* Guardrail bar */}
+                            <div style={{ marginBottom: 16 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Guardrail Level</span>
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
+                                        {guardrailLabel(agent.guardrail_level)} ({(agent.guardrail_level * 100).toFixed(0)}%)
+                                    </span>
+                                </div>
+                                <div style={{ height: 6, background: "rgba(55, 65, 81, 0.5)", borderRadius: 3, overflow: "hidden" }}>
+                                    <div
+                                        style={{
+                                            width: `${agent.guardrail_level * 100}%`,
+                                            height: "100%",
+                                            borderRadius: 3,
+                                            background: `linear-gradient(to right, #10b981, #3b82f6, #6366f1)`,
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Info row + Action */}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                                <div style={{ display: "flex", gap: 12, fontSize: 12, color: "var(--text-muted)" }}>
+                                    <span className="flex items-center gap-1"><Wrench className="w-3 h-3" /> {agent.allowed_tools?.length || 0} tools</span>
+                                    <span className="flex items-center gap-1"><GitBranch className="w-3 h-3" /> {agent.states?.length || 0} states</span>
                                 </div>
 
-                                {/* Info row + Action */}
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                                    <div style={{ display: "flex", gap: 12, fontSize: 12, color: "var(--text-muted)" }}>
-                                        <span className="flex items-center gap-1"><Wrench className="w-3 h-3" /> {agent.allowed_tools?.length || 0} tools</span>
-                                        <span className="flex items-center gap-1"><GitBranch className="w-3 h-3" /> {agent.states?.length || 0} states</span>
-                                    </div>
-
-                                    <button
-                                        onClick={(e) => openTestModal(e, agent)}
-                                        className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 hover:text-blue-300 text-xs font-medium transition-colors border border-blue-500/20"
-                                    >
-                                        <Phone className="w-3.5 h-3.5" />
-                                        Test Call
-                                    </button>
-                                </div>
+                                <button
+                                    onClick={(e) => openTestModal(e, agent)}
+                                    className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 hover:text-blue-300 text-xs font-medium transition-colors border border-blue-500/20"
+                                >
+                                    <Phone className="w-3.5 h-3.5" />
+                                    Test Call
+                                </button>
                             </div>
                         </Link>
                     );
                 })}
             </div>
 
-            {/* Test Call Modal */}
+            {/* Test Chat Modal UI Simulator */}
             {selectedAgent && (
-                <TestCallModal
+                <TestChatModal
                     isOpen={isTestModalOpen}
                     onClose={() => setIsTestModalOpen(false)}
                     agentId={selectedAgent.id}
@@ -168,4 +188,3 @@ export default function AgentsPage() {
         </div>
     );
 }
-

@@ -19,10 +19,6 @@ export default function Sidebar() {
     const [user, setUser] = useState<{ email: string; tenant_name: string } | null>(null);
 
     useEffect(() => {
-        // Fetch current user details
-        fetch("http://localhost:8765/api/auth/me", { credentials: "omit" }) // We have cookie or need to read it if it wasn't HttpOnly. Actually, let's just use the cookie we set. Wait, fetch to another port needs CORS config. 
-        // We set the cookie as `superactive_auth` earlier. If we use headers: { Authorization: } we need to read it.
-        // Let's read the cookie directly to get the token, since we set it via JS.
         const tokenMatch = document.cookie.match(/(?:^|; )superactive_auth=([^;]*)/);
         const token = tokenMatch ? tokenMatch[1] : null;
 
@@ -30,15 +26,27 @@ export default function Sidebar() {
             fetch("http://localhost:8765/api/auth/me", {
                 headers: { "Authorization": `Bearer ${token}` }
             })
-                .then(res => res.json())
+                .then(res => {
+                    if (!res.ok) {
+                        // Token is invalid/expired — clear it automatically
+                        document.cookie = "superactive_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+                        router.push("/login");
+                        throw new Error("Invalid session");
+                    }
+                    return res.json();
+                })
                 .then(data => {
                     if (data && data.email) {
                         setUser(data);
                     }
                 })
-                .catch(err => console.error("Failed to load user info:", err));
+                .catch(err => {
+                    console.error("Failed to load user info:", err);
+                    document.cookie = "superactive_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+                    router.push("/login");
+                });
         }
-    }, []);
+    }, [router]);
 
     const handleLogout = () => {
         document.cookie = "superactive_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
@@ -133,7 +141,7 @@ export default function Sidebar() {
                 </div>
 
                 {/* User Profile & Logout */}
-                {user && (
+                {user ? (
                     <div className="bg-white border text-sm border-gray-100 rounded-2xl p-4 flex flex-col gap-3 shadow-sm">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
@@ -154,6 +162,14 @@ export default function Sidebar() {
                             <span>Log out</span>
                         </button>
                     </div>
+                ) : (
+                    <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center justify-center gap-2 text-red-600 font-medium bg-red-50 hover:bg-red-100 py-2 rounded-xl transition-colors mt-4"
+                    >
+                        <LogOut size={14} />
+                        <span>Force Log out</span>
+                    </button>
                 )}
             </div>
         </aside>

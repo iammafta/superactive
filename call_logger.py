@@ -171,5 +171,11 @@ class CallLogger:
             return {}
         return await db_get_analytics(tenant_id, days)
 
+    async def clear_analytics(self, tenant_id: str) -> bool:
+        from db import db_clear_analytics
+        if not tenant_id:
+            return False
+        return await db_clear_analytics(tenant_id)
+
 # Global instance
 call_logger = CallLogger()

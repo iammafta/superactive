@@ -292,8 +292,8 @@ async def websocket_endpoint(websocket: WebSocket):
         state_processor = TranscriptLoggerProcessor(
             call_id=call_sid, call_logger=call_logger
         )
-        transition_filter = TranscriptLoggerFilter(
-            call_id=call_sid, call_logger=call_logger
+        transition_filter = StateTransitionFilter(
+            monitor=None, call_id=call_sid, call_logger=call_logger
         )
 
     pipeline_components = [

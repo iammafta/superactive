@@ -44,3 +44,14 @@ async def api_get_analytics(
 ):
     """Get aggregated analytics."""
     return await call_logger.get_analytics(tenant_id=user.tenant_id, days=days)
+
+
+@router.delete("/analytics/history")
+async def api_clear_analytics(
+    user: UserContext = Depends(get_current_user),
+):
+    """Clear all call history for the tenant."""
+    success = await call_logger.clear_analytics(tenant_id=user.tenant_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to clear history")
+    return {"status": "success", "message": "Call history cleared"}

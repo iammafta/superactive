@@ -50,17 +50,22 @@ CREATE TABLE IF NOT EXISTS agents (
     tenant_id TEXT NOT NULL REFERENCES tenants(id),
     name TEXT NOT NULL,
     business_type TEXT NOT NULL,
+    agent_type TEXT DEFAULT 'inbound',
     system_prompt TEXT NOT NULL,
     greeting TEXT DEFAULT 'Hello, how can I help you today?',
+    outbound_greeting TEXT DEFAULT '',
     voice_id TEXT DEFAULT 'en-US-Chirp3-HD-Charon',
     guardrail_level REAL DEFAULT 0.5,
     allowed_tools TEXT DEFAULT '[]',
     webhook_url TEXT,
     webhook_headers TEXT DEFAULT '{}',
+    webhook_payload_mapping TEXT DEFAULT '{}',
     states TEXT DEFAULT '[]',
     max_turns INTEGER DEFAULT 20,
     max_duration_seconds INTEGER DEFAULT 300,
     escalation_triggers TEXT DEFAULT '[]',
+    frustration_tolerance INTEGER DEFAULT 1,
+    loop_sensitivity INTEGER DEFAULT 2,
     active INTEGER DEFAULT 1,
     description TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now')),
@@ -170,8 +175,28 @@ async def init_db():
         count = (await cursor.fetchone())[0]
         if count == 0:
             await _migrate_from_files(db)
+        
+        # Schema auto-migrations for agents table upgrades
+        await _apply_db_migrations(db)
     finally:
         await db.close()
+
+async def _apply_db_migrations(db: aiosqlite.Connection):
+    """Dynamically add new columns to existing tables if missing."""
+    cursor = await db.execute("PRAGMA table_info(agents)")
+    columns = [row["name"] for row in await cursor.fetchall()]
+    
+    if "outbound_greeting" not in columns:
+        await db.execute("ALTER TABLE agents ADD COLUMN outbound_greeting TEXT DEFAULT ''")
+    if "agent_type" not in columns:
+        await db.execute("ALTER TABLE agents ADD COLUMN agent_type TEXT DEFAULT 'inbound'")
+    if "frustration_tolerance" not in columns:
+        await db.execute("ALTER TABLE agents ADD COLUMN frustration_tolerance INTEGER DEFAULT 1")
+    if "loop_sensitivity" not in columns:
+        await db.execute("ALTER TABLE agents ADD COLUMN loop_sensitivity INTEGER DEFAULT 2")
+    if "webhook_payload_mapping" not in columns:
+        await db.execute("ALTER TABLE agents ADD COLUMN webhook_payload_mapping TEXT DEFAULT '{}'")
+    await db.commit()
 
 
 # ── Tenant CRUD ──────────────────────────────────────────────────────
@@ -250,11 +275,27 @@ async def db_get_user_by_email(email: str) -> Optional[dict]:
 def _agent_row_to_dict(row: dict) -> dict:
     """Convert a DB row to AgentConfig-compatible dict."""
     d = dict(row)
-    for key in ("allowed_tools", "states", "escalation_triggers"):
+    for key in ("allowed_tools", "escalation_triggers"):
         if isinstance(d.get(key), str):
             d[key] = json.loads(d[key])
     if isinstance(d.get("webhook_headers"), str):
         d["webhook_headers"] = json.loads(d["webhook_headers"])
+    if isinstance(d.get("webhook_payload_mapping"), str):
+        d["webhook_payload_mapping"] = json.loads(d.get("webhook_payload_mapping") or "{}")
+        
+    if isinstance(d.get("states"), str):
+        states = json.loads(d["states"])
+        for state in states:
+            if "required_info" in state:
+                migrated_reqs = []
+                for req in state["required_info"]:
+                    if isinstance(req, str):
+                        migrated_reqs.append({"name": req, "description": "", "type": "string"})
+                    else:
+                        migrated_reqs.append(req)
+                state["required_info"] = migrated_reqs
+        d["states"] = states
+
     d["active"] = bool(d.get("active", 1))
     return d
 
@@ -268,6 +309,8 @@ def _agent_dict_to_row(agent: dict, tenant_id: str) -> dict:
             d[key] = json.dumps(d[key])
     if isinstance(d.get("webhook_headers"), dict):
         d["webhook_headers"] = json.dumps(d["webhook_headers"])
+    if isinstance(d.get("webhook_payload_mapping"), dict):
+        d["webhook_payload_mapping"] = json.dumps(d.get("webhook_payload_mapping", {}))
     d["active"] = 1 if d.get("active", True) else 0
     d["updated_at"] = datetime.now().isoformat()
     return d
@@ -293,9 +336,10 @@ async def db_load_agent(agent_id: str, tenant_id: str = None) -> Optional[dict]:
 async def db_save_agent(agent: dict, tenant_id: str) -> bool:
     """Insert or update an agent."""
     row = _agent_dict_to_row(agent, tenant_id)
-    cols = ["id", "tenant_id", "name", "business_type", "system_prompt", "greeting",
-            "voice_id", "guardrail_level", "allowed_tools", "webhook_url", "webhook_headers",
+    cols = ["id", "tenant_id", "name", "business_type", "agent_type", "system_prompt", "greeting", "outbound_greeting",
+            "voice_id", "guardrail_level", "allowed_tools", "webhook_url", "webhook_headers", "webhook_payload_mapping",
             "states", "max_turns", "max_duration_seconds", "escalation_triggers",
+            "frustration_tolerance", "loop_sensitivity",
             "active", "description", "updated_at"]
     placeholders = ", ".join(["?"] * len(cols))
     col_names = ", ".join(cols)
@@ -600,6 +644,18 @@ async def db_get_calls(tenant_id: str, days: int = 7, agent_id: str = None,
     finally:
         await db.close()
 
+async def db_clear_analytics(tenant_id: str) -> bool:
+    """Delete all calls and logs for a tenant (used to reset ghost calls)."""
+    db = await get_db()
+    try:
+        await db.execute("DELETE FROM calls WHERE tenant_id = ?", (tenant_id,))
+        await db.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to clear analytics for {tenant_id}: {e}")
+        return False
+    finally:
+        await db.close()
 
 async def db_get_analytics(tenant_id: str, days: int = 30) -> dict:
     """Aggregate analytics for a tenant."""
@@ -610,7 +666,7 @@ async def db_get_analytics(tenant_id: str, days: int = 30) -> dict:
 
         # Current period
         cursor = await db.execute(
-            "SELECT * FROM calls WHERE tenant_id = ? AND started_at >= ?",
+            "SELECT * FROM calls WHERE tenant_id = ? AND started_at >= ? ORDER BY started_at DESC",
             (tenant_id, cutoff),
         )
         current_calls = [_call_row_to_dict(r) for r in await cursor.fetchall()]
@@ -709,6 +765,7 @@ async def db_get_analytics(tenant_id: str, days: int = 30) -> dict:
             "outcomes": {"booked": booked, "transferred": transferred, "completed": completed, "hung_up": hung_up},
             "agent_performance": agent_performance, "hang_up_heatmap": hang_up_states,
             "calls_per_day": calls_per_day, "changes": changes,
+            "recent_calls": current_calls[:10],
         }
     finally:
         await db.close()

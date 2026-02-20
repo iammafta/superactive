@@ -28,8 +28,8 @@ class StateConfig(BaseModel):
         default_factory=dict
     )
     max_turns: int = 5                           # Per-state turn limit
-    required_info: list[str] = Field(            # Info to collect in this state
-        default_factory=list                     # e.g. ["name", "phone", "reason"]
+    required_info: list[dict] = Field(           # Info to collect: [{"name": "date", "description": "", "type": "string"}]
+        default_factory=list
     )
 
 
@@ -45,14 +45,18 @@ class AgentConfig(BaseModel):
     tenant_id: str = ""                          # Owner (injected by API route)
     name: str                                    # "Dr. Smith's Receptionist"
     business_type: str                           # "medical" | "restaurant" | "insurance"
+    agent_type: str = Field(default="inbound", pattern="^(inbound|outbound|hybrid)$")  # Direction logic
 
     # Persona
     system_prompt: str                           # Full persona + business rules
     greeting: str = "Hello, how can I help you today?"
+    outbound_greeting: str = ""                  # Greeting for outbound calls
     voice_id: str = "en-US-Chirp3-HD-Charon"     # TTS voice
 
     # Guardrails (0.0 = free talk, 1.0 = strict script)
     guardrail_level: float = Field(default=0.5, ge=0.0, le=1.0)
+    frustration_tolerance: int = 1               # Number of frustration triggers before escalation
+    loop_sensitivity: int = 2                    # Turns before forcing transition on repeated info
 
     # Tools
     allowed_tools: list[str] = Field(            # ["book_appointment", "send_sms"]
@@ -62,6 +66,9 @@ class AgentConfig(BaseModel):
     # Business data hooks
     webhook_url: Optional[str] = None            # Client's custom API endpoint
     webhook_headers: dict[str, str] = Field(     # Auth headers for webhook
+        default_factory=dict
+    )
+    webhook_payload_mapping: dict[str, str] = Field( # Map state facts to custom JSON keys
         default_factory=dict
     )
 
@@ -134,11 +141,16 @@ class AgentConfig(BaseModel):
                 "their guidance but never read them aloud or reference them to the caller.\n"
                 "When a transition condition is met, output the transition tag "
                 "EXACTLY as shown. Example: [TRANSITION: next_state]\n"
-                "When the conversation is complete, output [HANGUP].\n"
                 "NEVER repeat a question the caller already answered. "
                 "If they told you something, acknowledge it and move on to the NEXT question.\n"
                 "Use brief acknowledgments like 'sure', 'got it', 'absolutely' to show you're listening."
             )
+
+        parts.append(
+            "\n\n## Call Conclusion\n"
+            "When the conversation is completely finished and it is time to say goodbye, "
+            "you MUST output the exact tag [HANGUP] to terminate the call."
+        )
 
         return "\n".join(parts)
 

@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import useSWR from "swr";
+import { useState } from "react";
+import useSWR, { mutate } from "swr";
 import {
     Phone,
     Clock,
-    Calendar,
-    DollarSign,
     Activity,
     Users,
     Shield,
@@ -15,10 +13,14 @@ import {
     Bot,
     TrendingUp,
     TrendingDown,
-    Loader2
+    Loader2,
+    MessageSquare,
+    Zap,
+    Crown,
+    Trash2,
+    CheckCircle2
 } from "lucide-react";
-import { API_BASE_URL, fetcher } from "@/lib/api";
-
+import { API_BASE_URL, fetcher, deleteHistory } from "@/lib/api";
 import type { AnalyticsData } from "@/lib/types";
 
 function formatDuration(seconds: number): string {
@@ -46,13 +48,6 @@ function MetricCard({
     Icon: any;
     color?: string;
 }) {
-    const bgColors: Record<string, string> = {
-        blue: "rgba(59, 130, 246, 0.1)",
-        green: "rgba(16, 185, 129, 0.1)",
-        purple: "rgba(139, 92, 246, 0.1)",
-        orange: "rgba(249, 115, 22, 0.1)",
-    };
-
     const textColors: Record<string, string> = {
         blue: "#3b82f6",
         green: "#10b981",
@@ -61,49 +56,28 @@ function MetricCard({
     };
 
     return (
-        <div className="metric-card hover:bg-white/[0.02] transition-colors" style={{ flex: 1, minWidth: 200 }}>
-            <div
-                style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    marginBottom: 8,
-                }}
-            >
-                <span className="metric-label">{label}</span>
-                <span
-                    style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        background: bgColors[color],
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: textColors[color]
-                    }}
-                >
-                    <Icon className="w-5 h-5" />
+        <div className="glass-card hover:bg-white/[0.02] transition-colors flex flex-col justify-between" style={{ padding: 20, minHeight: 120 }}>
+            <div className="flex justify-between items-start mb-2">
+                <span className="text-sm text-[var(--text-muted)] font-medium">{label}</span>
+                <span className="p-2 rounded-lg bg-white/5" style={{ color: textColors[color] }}>
+                    <Icon className="w-4 h-4" />
                 </span>
             </div>
-            <div className="metric-value">{value}</div>
-            {change && (
-                <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
-                    {change.startsWith("+") ? (
-                        <TrendingUp className="w-3 h-3 text-emerald-400" />
-                    ) : (
-                        <TrendingDown className="w-3 h-3 text-red-400" />
-                    )}
-                    <span
-                        style={{
-                            fontSize: 12,
-                            color: change.startsWith("+") ? "#34d399" : "#f87171",
-                        }}
-                    >
-                        {change} vs last month
-                    </span>
-                </div>
-            )}
+            <div>
+                <div className="text-2xl font-bold text-[var(--text-primary)]">{value}</div>
+                {change && (
+                    <div className="flex items-center gap-1 mt-1">
+                        {change.startsWith("+") ? (
+                            <TrendingUp className="w-3 h-3 text-emerald-400" />
+                        ) : (
+                            <TrendingDown className="w-3 h-3 text-red-400" />
+                        )}
+                        <span className="text-xs" style={{ color: change.startsWith("+") ? "#34d399" : "#f87171" }}>
+                            {change} vs last month
+                        </span>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
@@ -117,7 +91,6 @@ function OutcomeDonut({ outcomes }: { outcomes: Record<string, number> }) {
         hung_up: "#ef4444",
     };
 
-    // SVG donut chart
     let offset = 0;
     const segments = Object.entries(outcomes).map(([key, value]) => {
         const pct = total > 0 ? (value / total) * 100 : 0;
@@ -128,341 +101,300 @@ function OutcomeDonut({ outcomes }: { outcomes: Record<string, number> }) {
     });
 
     return (
-        <div className="glass-card" style={{ padding: 24, flex: 1 }}>
-            <h3 className="section-title">Call Outcomes</h3>
-            <div
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 32,
-                }}
-            >
-                <div style={{ position: "relative", width: 160, height: 160 }}>
-                    <svg viewBox="0 0 42 42" style={{ transform: "rotate(-90deg)" }}>
-                        {total > 0 ? segments.map((seg) => (
-                            <circle
-                                key={seg.key}
-                                cx="21"
-                                cy="21"
-                                r="15.915"
-                                fill="transparent"
-                                stroke={seg.color}
-                                strokeWidth="5"
-                                strokeDasharray={seg.dash}
-                                strokeDashoffset={-seg.offset}
-                                strokeLinecap="round"
-                            />
-                        )) : (
-                            <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#333" strokeWidth="5" />
-                        )}
-                    </svg>
-                    <div
-                        style={{
-                            position: "absolute",
-                            top: "50%",
-                            left: "50%",
-                            transform: "translate(-50%, -50%)",
-                            textAlign: "center",
-                        }}
-                    >
-                        <div style={{ fontSize: 22, fontWeight: 700 }}>{total.toLocaleString()}</div>
-                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Calls</div>
-                    </div>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    {segments.map((seg) => (
-                        <div key={seg.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <div
-                                style={{
-                                    width: 10,
-                                    height: 10,
-                                    borderRadius: 3,
-                                    background: seg.color,
-                                }}
-                            />
-                            <span style={{ fontSize: 13, color: "var(--text-secondary)", textTransform: "capitalize", minWidth: 80 }}>
-                                {seg.key.replace("_", " ")}
-                            </span>
-                            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
-                                {Math.round(seg.pct)}%
-                            </span>
-                        </div>
-                    ))}
+        <div className="flex items-center justify-center gap-8">
+            <div className="relative w-32 h-32">
+                <svg viewBox="0 0 42 42" className="-rotate-90 w-full h-full">
+                    {total > 0 ? segments.map((seg) => (
+                        <circle
+                            key={seg.key}
+                            cx="21"
+                            cy="21"
+                            r="15.915"
+                            fill="transparent"
+                            stroke={seg.color}
+                            strokeWidth="5"
+                            strokeDasharray={seg.dash}
+                            strokeDashoffset={-seg.offset}
+                            strokeLinecap="round"
+                        />
+                    )) : (
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#333" strokeWidth="5" />
+                    )}
+                </svg>
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
+                    <div className="text-xl font-bold">{total.toLocaleString()}</div>
+                    <div className="text-[10px] text-[var(--text-muted)]">Calls</div>
                 </div>
             </div>
-        </div>
-    );
-}
-
-function AgentPerformanceTable({
-    agents,
-}: {
-    agents: any[];
-}) {
-    return (
-        <div className="glass-card" style={{ padding: 24, marginTop: 20 }}>
-            <h3 className="section-title">Agent Performance</h3>
-            <div className="overflow-x-auto">
-                <table className="data-table">
-                    <thead>
-                        <tr>
-                            <th>Agent</th>
-                            <th>Calls</th>
-                            <th>Conversion Rate</th>
-                            <th>Avg Duration</th>
-                            <th>Score</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {agents.map((agent) => {
-                            const Icon = TYPE_ICONS[agent.business_type] || Bot;
-                            return (
-                                <tr key={agent.agent_id}>
-                                    <td>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
-                                                <Icon className="w-5 h-5" />
-                                            </div>
-                                            <div>
-                                                <div
-                                                    style={{
-                                                        fontWeight: 600,
-                                                        color: "var(--text-primary)",
-                                                        fontSize: 14,
-                                                        textTransform: "capitalize",
-                                                    }}
-                                                >
-                                                    {agent.agent_id.replace(/_/g, " ")}
-                                                </div>
-                                                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                                                    {agent.business_type}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td style={{ fontWeight: 600, color: "var(--text-primary)" }}>
-                                        {agent.calls}
-                                    </td>
-                                    <td>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                            <div
-                                                style={{
-                                                    width: 100,
-                                                    height: 6,
-                                                    background: "rgba(55, 65, 81, 0.5)",
-                                                    borderRadius: 3,
-                                                    overflow: "hidden",
-                                                }}
-                                            >
-                                                <div
-                                                    style={{
-                                                        width: `${agent.conversion_rate}%`,
-                                                        height: "100%",
-                                                        borderRadius: 3,
-                                                        background:
-                                                            agent.conversion_rate >= 35
-                                                                ? "#10b981"
-                                                                : agent.conversion_rate >= 25
-                                                                    ? "#3b82f6"
-                                                                    : "#f59e0b",
-                                                    }}
-                                                />
-                                            </div>
-                                            <span style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: 13 }}>
-                                                {agent.conversion_rate}%
-                                            </span>
-                                        </div>
-                                    </td>
-                                    <td>{formatDuration(agent.avg_duration)}</td>
-                                    <td>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                            <div
-                                                style={{
-                                                    width: 60,
-                                                    height: 6,
-                                                    borderRadius: 3,
-                                                    overflow: "hidden",
-                                                    background: "rgba(55, 65, 81, 0.5)",
-                                                }}
-                                            >
-                                                <div
-                                                    style={{
-                                                        width: `${Math.min(agent.conversion_rate * 2.5, 100)}%`,
-                                                        height: "100%",
-                                                        borderRadius: 3,
-                                                        background:
-                                                            agent.conversion_rate >= 35
-                                                                ? "#10b981"
-                                                                : agent.conversion_rate >= 25
-                                                                    ? "#3b82f6"
-                                                                    : "#f59e0b",
-                                                    }}
-                                                />
-                                            </div>
-                                            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
-                                                {(agent.conversion_rate / 10 + 3.5).toFixed(1)}/5
-                                            </span>
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+            <div className="flex flex-col gap-2">
+                {segments.map((seg) => (
+                    <div key={seg.key} className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-sm" style={{ background: seg.color }} />
+                        <span className="text-xs text-[var(--text-secondary)] capitalize min-w-[70px]">
+                            {seg.key.replace("_", " ")}
+                        </span>
+                        <span className="text-xs font-semibold text-[var(--text-primary)]">
+                            {Math.round(seg.pct)}%
+                        </span>
+                    </div>
+                ))}
             </div>
         </div>
     );
 }
 
 export default function DashboardPage() {
-    const { data, error } = useSWR<AnalyticsData>(`${API_BASE_URL}/analytics`, fetcher);
+    const { data, error, isLoading } = useSWR<AnalyticsData>(`${API_BASE_URL}/analytics`, fetcher);
+    const [isWiping, setIsWiping] = useState(false);
 
-    // In MVP, we might get empty data if no calls.
-    // Ensure we handle loading/error gracefully.
+    const wipeHistory = async () => {
+        if (!confirm("Are you sure you want to delete all call history? This cannot be undone.")) return;
+        setIsWiping(true);
+        try {
+            await deleteHistory();
+            mutate(`${API_BASE_URL}/analytics`);
+        } catch (err) {
+            console.error(err);
+            alert("Failed to wipe history.");
+        } finally {
+            setIsWiping(false);
+        }
+    };
 
     if (error) return <div className="p-12 text-center text-red-400">Failed to load analytics: {error.message}</div>;
-    if (!data) return (
-        <div className="flex items-center justify-center h-screen text-gray-400 gap-3">
+    if (isLoading || !data) return (
+        <div className="flex items-center justify-center h-[80vh] text-gray-400 gap-3">
             <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
             Loading dashboard...
         </div>
     );
 
-    // Real cost from call logger vs $3/min human agent benchmark
-    const actualCost = data.total_cost || 0;
-    const humanEquivalent = Math.round((data.avg_duration || 120) / 60 * 3 * data.total_calls); // $3/min human agent
-    const costSavings = Math.max(0, humanEquivalent - Math.round(actualCost));
-
     return (
-        <div>
-            {/* Header */}
-            <div
-                style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: 28,
-                }}
-            >
+        <div className="max-w-7xl mx-auto pb-12">
+            {/* Header Area */}
+            <div className="flex justify-between items-end mb-8">
                 <div>
-                    <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>
-                        Dashboard
+                    <h1 className="text-2xl font-bold mb-1 text-white">
+                        Command Center
                     </h1>
-                    <p style={{ fontSize: 14, color: "var(--text-muted)" }}>
-                        Overview of your AI voice agent performance
+                    <p className="text-sm text-[var(--text-muted)]">
+                        Real-time overview of your AI workforce
                     </p>
                 </div>
-                {/* Live Indicator - Connect to WebSocket later */}
-                <div
-                    style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        background: "rgba(16, 185, 129, 0.1)",
-                        border: "1px solid rgba(16, 185, 129, 0.3)",
-                        padding: "8px 16px",
-                        borderRadius: 10,
-                    }}
-                >
-                    <div className="pulse-live bg-emerald-500 w-2 h-2 rounded-full" />
-                    <span className="text-emerald-400 text-sm font-semibold">
-                        System Online
-                    </span>
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={wipeHistory}
+                        disabled={isWiping}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-medium transition-colors border border-red-500/20 disabled:opacity-50"
+                        title="Clear old history to reset metrics"
+                    >
+                        {isWiping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        Wipe History
+                    </button>
+                    <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-lg">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-emerald-400 text-sm font-semibold">Systems Online</span>
+                    </div>
                 </div>
             </div>
 
-            {/* Metric Cards */}
-            <div style={{ display: "flex", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
-                <MetricCard
-                    label="Total Calls"
-                    value={data.total_calls.toLocaleString()}
-                    change={data.changes?.total_calls}
-                    Icon={Phone}
-                    color="blue"
-                />
-                <MetricCard
-                    label="Avg Duration"
-                    value={formatDuration(data.avg_duration)}
-                    change={data.changes?.avg_duration}
-                    Icon={Clock}
-                    color="purple"
-                />
-                <MetricCard
-                    label="Booking Rate"
-                    value={`${data.booking_rate}%`}
-                    change={data.changes?.booking_rate}
-                    Icon={Calendar}
-                    color="green"
-                />
-                <MetricCard
-                    label="Cost Savings"
-                    value={`$${costSavings.toLocaleString()}`}
-                    change={data.changes?.total_calls}
-                    Icon={DollarSign}
-                    color="orange"
-                />
-            </div>
+            {/* Bento Grid Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-6">
 
-            {/* Charts Row */}
-            <div style={{ display: "flex", gap: 20, marginBottom: 20, flexWrap: "wrap" }}>
-                {/* Call Volume Chart - placeholder with gradient bar */}
-                <div className="glass-card" style={{ padding: 24, flex: 1.5, minWidth: 300 }}>
-                    <h3 className="section-title">Calls per Day (Last 30 Days)</h3>
-                    {data.calls_per_day && data.calls_per_day.length > 0 ? (
-                        <>
-                            <div
-                                style={{
-                                    height: 180,
-                                    display: "flex",
-                                    alignItems: "flex-end",
-                                    gap: 4,
-                                    paddingBottom: 24,
-                                }}
-                            >
-                                {(() => {
-                                    const maxCount = Math.max(1, ...data.calls_per_day.map(d => d.count));
-                                    return data.calls_per_day.map((day, i) => {
-                                        const pct = (day.count / maxCount) * 100;
-                                        return (
-                                            <div
-                                                key={day.date}
-                                                title={`${day.date}: ${day.count} call${day.count !== 1 ? "s" : ""}`}
-                                                style={{
-                                                    flex: 1,
-                                                    height: `${Math.max(pct, day.count > 0 ? 8 : 2)}%`,
-                                                    background: day.count > 0
-                                                        ? `linear-gradient(to top, rgba(59, 130, 246, 0.3), rgba(59, 130, 246, 0.7))`
-                                                        : "rgba(55, 65, 81, 0.3)",
-                                                    borderRadius: "2px 2px 0 0",
-                                                    transition: "height 0.3s ease",
-                                                    cursor: "default",
-                                                }}
-                                            />
-                                        );
-                                    });
-                                })()}
+                {/* Left Column (Main Stats & Feed) - Takes up 3 cols on XL */}
+                <div className="lg:col-span-2 xl:col-span-3 space-y-6">
+
+                    {/* Top KPIs */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <MetricCard
+                            label="Total Conversations"
+                            value={data.total_calls.toLocaleString()}
+                            change={data.changes?.total_calls}
+                            Icon={MessageSquare}
+                            color="blue"
+                        />
+                        <MetricCard
+                            label="Avg Call Duration"
+                            value={formatDuration(data.avg_duration)}
+                            change={data.changes?.avg_duration}
+                            Icon={Clock}
+                            color="purple"
+                        />
+                        <MetricCard
+                            label="Booking / Success Rate"
+                            value={`${data.booking_rate}%`}
+                            change={data.changes?.booking_rate}
+                            Icon={CheckCircle2}
+                            color="green"
+                        />
+                    </div>
+
+                    {/* Middle Section: Recent Transcripts & Outcomes */}
+                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+
+                        {/* Feed Widget (2/3 width on XL) */}
+                        <div className="xl:col-span-2 glass-card p-6 flex flex-col h-[400px]">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="section-title !mb-0">Live Transcripts</h3>
+                                <span className="text-xs text-[var(--text-muted)]">Last 10 calls</span>
                             </div>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-muted)" }}>
-                                <span>{data.calls_per_day[0]?.date.slice(5)}</span>
-                                {data.calls_per_day.length > 15 && (
-                                    <span>{data.calls_per_day[Math.floor(data.calls_per_day.length / 2)]?.date.slice(5)}</span>
+
+                            <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
+                                {data.recent_calls?.length > 0 ? (
+                                    data.recent_calls.map((call, idx) => (
+                                        <div key={call.call_id || idx} className="p-3 rounded-lg bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-colors flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${call.outcome === 'booked' ? 'bg-emerald-500/20 text-emerald-400' : call.outcome === 'hung_up' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                                    <Phone className="w-4 h-4" />
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-medium text-[var(--text-primary)]">
+                                                        {call.business_type ? call.business_type.charAt(0).toUpperCase() + call.business_type.slice(1) : "Agent"} Protocol
+                                                    </div>
+                                                    <div className="text-xs text-[var(--text-muted)] flex items-center gap-2">
+                                                        <span>{formatDuration(call.duration_seconds)}</span>
+                                                        <span>•</span>
+                                                        <span>{new Date(call.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md ${call.outcome === 'booked' ? 'bg-emerald-500/10 text-emerald-400' :
+                                                    call.outcome === 'hung_up' ? 'bg-red-500/10 text-red-400' :
+                                                        'bg-blue-500/10 text-blue-400'
+                                                    }`}>
+                                                    {call.outcome.replace("_", " ")}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="h-full flex items-center justify-center text-sm text-[var(--text-muted)]">
+                                        No recent calls found.
+                                    </div>
                                 )}
-                                <span>{data.calls_per_day[data.calls_per_day.length - 1]?.date.slice(5)}</span>
                             </div>
-                        </>
-                    ) : (
-                        <div style={{ height: 180, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 14 }}>
-                            No call data yet. Make some calls to see the chart.
                         </div>
-                    )}
+
+                        {/* Outcomes (1/3 width on XL) */}
+                        <div className="glass-card p-6 flex flex-col justify-center items-center h-[400px]">
+                            <h3 className="section-title self-start w-full">Outcomes</h3>
+                            <div className="flex-1 w-full flex items-center justify-center">
+                                <OutcomeDonut outcomes={data.outcomes} />
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <OutcomeDonut outcomes={data.outcomes} />
+                {/* Right Column (Growth & Support Pillars) */}
+                <div className="space-y-6 flex flex-col">
+
+                    {/* Superactive Pro Upsell Block */}
+                    <div className="relative rounded-2xl overflow-hidden p-[1px] group">
+                        {/* Animated Gradient Border */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 opacity-80 group-hover:opacity-100 transition-opacity" />
+                        <div className="relative bg-[#0f111a] p-6 rounded-[15px] h-full flex flex-col items-start">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center mb-4 shadow-lg shadow-purple-500/20">
+                                <Crown className="w-5 h-5 text-white" />
+                            </div>
+                            <h3 className="text-lg font-bold text-white mb-2">Superactive Pro</h3>
+                            <p className="text-sm text-gray-400 mb-6 leading-relaxed">
+                                Unlock 100+ concurrent channels, low-latency models, and custom voice cloning.
+                            </p>
+                            <button className="w-full py-2.5 rounded-lg bg-white text-black font-semibold text-sm hover:bg-gray-100 transition-colors mt-auto">
+                                Upgrade Plan
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Live Support Agent Block */}
+                    <div className="glass-card p-6 flex-1 flex flex-col border border-blue-500/20 bg-blue-500/5">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="relative">
+                                <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
+                                    <Zap className="w-5 h-5 text-blue-400" />
+                                </div>
+                                <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-[#0B0C10] rounded-full" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-bold text-white">Live AI Support</h3>
+                                <p className="text-xs text-blue-400">Online & Ready</p>
+                            </div>
+                        </div>
+                        <p className="text-sm text-gray-400 mb-6 flex-1">
+                            Got a configuration question? Stuck on a state machine error? Let our expert AI support agent help you fix it live.
+                        </p>
+                        <button className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-colors">
+                            <MessageSquare className="w-4 h-4" />
+                            Start Chat
+                        </button>
+                    </div>
+
+                </div>
             </div>
 
-            {/* Agent Performance Table */}
-            <AgentPerformanceTable agents={data.agent_performance} />
+            {/* Agent Performance Table (Bottom Full Width) */}
+            <div className="glass-card mt-6 p-6">
+                <h3 className="section-title">Fleet Performance</h3>
+                <div className="overflow-x-auto">
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                <th>Agent</th>
+                                <th>Volume</th>
+                                <th>Success Rate</th>
+                                <th>Avg Duration</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {data.agent_performance?.map((agent) => {
+                                const Icon = TYPE_ICONS[agent.business_type] || Bot;
+                                return (
+                                    <tr key={agent.agent_id}>
+                                        <td>
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 rounded-lg bg-white/5 text-[var(--text-secondary)]">
+                                                    <Icon className="w-4 h-4" />
+                                                </div>
+                                                <div>
+                                                    <div className="font-semibold text-[var(--text-primary)] text-sm capitalize">
+                                                        {agent.agent_id.replace(/_/g, " ")}
+                                                    </div>
+                                                    <div className="text-xs text-[var(--text-muted)]">
+                                                        {agent.business_type}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="font-medium text-[var(--text-primary)]">
+                                            {agent.calls} calls
+                                        </td>
+                                        <td>
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-24 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                                    <div
+                                                        className="h-full rounded-full transition-all duration-500"
+                                                        style={{
+                                                            width: `${agent.conversion_rate}%`,
+                                                            background: agent.conversion_rate >= 35 ? "#10b981" : agent.conversion_rate >= 25 ? "#3b82f6" : "#f59e0b",
+                                                        }}
+                                                    />
+                                                </div>
+                                                <span className="font-medium text-[var(--text-primary)] text-sm">
+                                                    {agent.conversion_rate}%
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="text-sm text-[var(--text-secondary)]">
+                                            {formatDuration(agent.avg_duration)}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     );
 }
