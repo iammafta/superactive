@@ -1,12 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import useSWR, { mutate } from "swr";
+import useSWR from "swr";
 import {
     Phone,
     Clock,
-    Activity,
-    Users,
     Shield,
     Stethoscope,
     Utensils,
@@ -15,12 +12,11 @@ import {
     TrendingDown,
     Loader2,
     MessageSquare,
-    Zap,
-    Crown,
-    Trash2,
-    CheckCircle2
+    CheckCircle2,
+    BookOpen,
+    ExternalLink
 } from "lucide-react";
-import { API_BASE_URL, fetcher, deleteHistory } from "@/lib/api";
+import { API_BASE_URL, fetcher } from "@/lib/api";
 import type { AnalyticsData } from "@/lib/types";
 
 function formatDuration(seconds: number): string {
@@ -94,7 +90,7 @@ function OutcomeDonut({ outcomes }: { outcomes: Record<string, number> }) {
     let offset = 0;
     const segments = Object.entries(outcomes).map(([key, value]) => {
         const pct = total > 0 ? (value / total) * 100 : 0;
-        const dash = `${pct} ${100 - pct}`;
+        const dash = `${pct} ${100 - pct} `;
         const seg = { key, value, pct, dash, offset, color: colors[key] || "#666" };
         offset += pct;
         return seg;
@@ -145,21 +141,6 @@ function OutcomeDonut({ outcomes }: { outcomes: Record<string, number> }) {
 
 export default function DashboardPage() {
     const { data, error, isLoading } = useSWR<AnalyticsData>(`${API_BASE_URL}/analytics`, fetcher);
-    const [isWiping, setIsWiping] = useState(false);
-
-    const wipeHistory = async () => {
-        if (!confirm("Are you sure you want to delete all call history? This cannot be undone.")) return;
-        setIsWiping(true);
-        try {
-            await deleteHistory();
-            mutate(`${API_BASE_URL}/analytics`);
-        } catch (err) {
-            console.error(err);
-            alert("Failed to wipe history.");
-        } finally {
-            setIsWiping(false);
-        }
-    };
 
     if (error) return <div className="p-12 text-center text-red-400">Failed to load analytics: {error.message}</div>;
     if (isLoading || !data) return (
@@ -181,20 +162,9 @@ export default function DashboardPage() {
                         Real-time overview of your AI workforce
                     </p>
                 </div>
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={wipeHistory}
-                        disabled={isWiping}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-medium transition-colors border border-red-500/20 disabled:opacity-50"
-                        title="Clear old history to reset metrics"
-                    >
-                        {isWiping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                        Wipe History
-                    </button>
-                    <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-lg">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-emerald-400 text-sm font-semibold">Systems Online</span>
-                    </div>
+                <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-lg">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-emerald-400 text-sm font-semibold">Systems Online</span>
                 </div>
             </div>
 
@@ -286,48 +256,64 @@ export default function DashboardPage() {
                     </div>
                 </div>
 
-                {/* Right Column (Growth & Support Pillars) */}
+                {/* Right Column — Quick Actions */}
                 <div className="space-y-6 flex flex-col">
 
-                    {/* Superactive Pro Upsell Block */}
-                    <div className="relative rounded-2xl overflow-hidden p-[1px] group">
-                        {/* Animated Gradient Border */}
-                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 opacity-80 group-hover:opacity-100 transition-opacity" />
-                        <div className="relative bg-[#0f111a] p-6 rounded-[15px] h-full flex flex-col items-start">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center mb-4 shadow-lg shadow-purple-500/20">
-                                <Crown className="w-5 h-5 text-white" />
-                            </div>
-                            <h3 className="text-lg font-bold text-white mb-2">Superactive Pro</h3>
-                            <p className="text-sm text-gray-400 mb-6 leading-relaxed">
-                                Unlock 100+ concurrent channels, low-latency models, and custom voice cloning.
-                            </p>
-                            <button className="w-full py-2.5 rounded-lg bg-white text-black font-semibold text-sm hover:bg-gray-100 transition-colors mt-auto">
-                                Upgrade Plan
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Live Support Agent Block */}
-                    <div className="glass-card p-6 flex-1 flex flex-col border border-blue-500/20 bg-blue-500/5">
+                    {/* Quick Start Guide */}
+                    <div className="glass-card p-6 border border-blue-500/20 bg-blue-500/5">
                         <div className="flex items-center gap-3 mb-4">
-                            <div className="relative">
-                                <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-                                    <Zap className="w-5 h-5 text-blue-400" />
-                                </div>
-                                <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-[#0B0C10] rounded-full" />
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                                <BookOpen className="w-5 h-5 text-white" />
                             </div>
                             <div>
-                                <h3 className="text-sm font-bold text-white">Live AI Support</h3>
-                                <p className="text-xs text-blue-400">Online & Ready</p>
+                                <h3 className="text-sm font-bold text-white">Quick Start</h3>
+                                <p className="text-xs text-blue-400">Get up and running</p>
                             </div>
                         </div>
-                        <p className="text-sm text-gray-400 mb-6 flex-1">
-                            Got a configuration question? Stuck on a state machine error? Let our expert AI support agent help you fix it live.
-                        </p>
-                        <button className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-colors">
-                            <MessageSquare className="w-4 h-4" />
-                            Start Chat
-                        </button>
+                        <ul className="text-sm text-gray-400 space-y-3 mb-6">
+                            <li className="flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs font-bold">1</span>
+                                Create an AI agent
+                            </li>
+                            <li className="flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold">2</span>
+                                Run a test call
+                            </li>
+                            <li className="flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs font-bold">3</span>
+                                Launch a campaign
+                            </li>
+                        </ul>
+                        <a href="/agents/new" className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-colors no-underline">
+                            Create Your First Agent
+                        </a>
+                    </div>
+
+                    {/* Documentation Link */}
+                    <div className="glass-card p-6 flex-1 flex flex-col">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center">
+                                <ExternalLink className="w-5 h-5 text-gray-400" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-bold text-white">Resources</h3>
+                                <p className="text-xs text-gray-500">Docs & guides</p>
+                            </div>
+                        </div>
+                        <ul className="text-sm text-gray-400 space-y-3 flex-1">
+                            <li className="flex items-center gap-2 hover:text-white transition-colors cursor-pointer">
+                                <span className="text-blue-400">→</span> Agent configuration guide
+                            </li>
+                            <li className="flex items-center gap-2 hover:text-white transition-colors cursor-pointer">
+                                <span className="text-blue-400">→</span> State machine reference
+                            </li>
+                            <li className="flex items-center gap-2 hover:text-white transition-colors cursor-pointer">
+                                <span className="text-blue-400">→</span> Campaign best practices
+                            </li>
+                            <li className="flex items-center gap-2 hover:text-white transition-colors cursor-pointer">
+                                <span className="text-blue-400">→</span> Webhook integration
+                            </li>
+                        </ul>
                     </div>
 
                 </div>

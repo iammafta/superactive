@@ -1,0 +1,131 @@
+# Dashboard Polish — Implementation Plan
+
+> Fix every issue from the [honest critique](file:///Users/maftaalif/.gemini/antigravity/brain/c3176117-87ad-46d2-9066-7981c0ccf1e1/honest_critique.md), prioritized by embarrassment level.
+
+## Sprint 1: Kill the Embarrassments
+
+These are live trust-breaking issues that would cost us a customer in 30 seconds.
+
+---
+
+### Frontend Fixes
+
+#### [MODIFY] [page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/page.tsx)
+- **Remove "Wipe History" button** (lines 184–193) — debug tool on the main dashboard
+- **Replace "Upgrade Plan" card** (lines 292–308) — swap button with a "Coming Soon — Get Early Access" state that collects email, or remove entirely
+- **Replace "Live AI Support" card** (lines 310–331) — link to documentation/GitHub instead of a dead button
+
+#### [MODIFY] [campaigns/page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/campaigns/page.tsx)
+- **Remove client-side ID generation** (lines 53–57) — remove `Date.now()` + `Math.random()` and let the backend generate the UUID
+- **Replace `alert()` calls** (lines 44–46, 79) with toast notifications
+- **Replace emoji 🗑️ delete button** (line 154) with `<Trash2>` from lucide-react
+- **Replace `console.error(err)` swallowing** (lines 87, 92, 97, 103, 108) with toast error messages
+
+#### [MODIFY] [settings/page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/settings/page.tsx)
+- **Replace `console.error` on save failure** (line 58) with toast notification
+
+#### [MODIFY] [Sidebar.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/components/Sidebar.tsx)
+- **Replace emoji nav icons** (lines 10–15) with Lucide React equivalents:
+  - `📊` → `<LayoutDashboard>`
+  - `🤖` → `<Bot>`
+  - `📞` → `<Phone>`
+  - `📣` → `<Megaphone>`
+  - `🎧` → `<Headphones>`
+  - `⚙️` → `<Settings>`
+
+#### [MODIFY] [monitor/page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/monitor/page.tsx)
+- **Replace emoji 📞** (line 40) with Lucide `<Phone>` or `<Activity>` icon
+
+#### [NEW] Toast notification setup
+- Install `sonner` (toast library — works perfectly with Next.js App Router)
+- Add `<Toaster>` to the dashboard layout
+- Create helper: `import { toast } from 'sonner'` → `toast.error(msg)`, `toast.success(msg)`
+
+---
+
+### Backend Fix
+
+#### [MODIFY] [routes/campaigns.py](file:///Users/maftaalif/Documents/Superactive/routes/campaigns.py)
+- **Ensure campaign ID is generated server-side** if not already — campaigns created from the frontend should use server-generated UUIDs
+- Current backend likely already supports this via `db_save_campaign`, but the frontend overrides it — the fix is primarily frontend (stop sending a client-generated ID)
+
+---
+
+## Sprint 2: Styling Unification
+
+Convert 3 styling approaches → **Tailwind only** (since agents and monitor pages already use it well).
+
+#### [MODIFY] [campaigns/page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/campaigns/page.tsx)
+- Convert all `style={{ }}` to Tailwind classes
+- Campaign cards, modal, header, status badges
+
+#### [MODIFY] [settings/page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/settings/page.tsx)
+- Convert all `style={{ }}` to Tailwind classes  
+- Form inputs, section cards, button bar
+
+#### [MODIFY] [Sidebar.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/components/Sidebar.tsx)
+- Convert `style={{ }}` on aside, logo, nav (lines 60–96) to Tailwind
+
+#### [NEW] Reusable components
+- Extract `<PageHeader>` — used across all 6 pages (title + subtitle + action button)
+- Extract `<Modal>` — used in campaigns and agent create/edit
+- Extract `<EmptyState>` — icon + text + CTA for empty pages
+
+---
+
+## Sprint 3: Onboarding & Empty States
+
+#### [MODIFY] [page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/page.tsx)
+- When `total_calls === 0`, show welcome banner: "Welcome to Superactive! Create your first agent to get started." with a CTA button linking to `/agents/new`
+
+#### [MODIFY] [agents/page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/agents/page.tsx)
+- When `agents.length === 0`, show `<EmptyState>` with "Create your first AI agent" CTA
+
+#### [MODIFY] [campaigns/page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/campaigns/page.tsx)
+- When `campaigns.length === 0`, show `<EmptyState>` with "Launch your first campaign" CTA
+
+#### [MODIFY] [calls/page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/calls/page.tsx)
+- When `calls.length === 0`, show `<EmptyState>` with "No calls yet — test your agent" CTA
+
+---
+
+## Sprint 4: Analytics Upgrade
+
+#### [MODIFY] [page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/page.tsx)
+- The API already returns `calls_per_day` and `hang_up_heatmap` — but the dashboard doesn't render them
+- Add a simple line/bar chart for `calls_per_day` (use a lightweight library like `recharts` or build SVG inline)
+- Display `total_cost` and `avg_cost_per_call` from `AnalyticsData` (fields already exist in the type)
+- Add a date range filter (last 7d / 30d / 90d / all)
+
+---
+
+## Verification Plan
+
+### Automated — Frontend Build Check
+```bash
+cd /Users/maftaalif/Documents/Superactive/dashboard
+npm run build
+```
+This verifies no TypeScript errors, no broken imports after refactoring.
+
+### Automated — Existing Backend Tests
+```bash
+cd /Users/maftaalif/Documents/Superactive
+python -m pytest tests/ -v
+```
+Verifies no backend regressions from campaign ID changes.
+
+### Browser Verification (Sprint 1)
+1. Navigate to the main dashboard (`/`) — verify no "Wipe History" button, no dead "Upgrade Plan" or "Live AI Support" clicks
+2. Navigate to `/campaigns` → click "+New Campaign" → create with name only → verify ID is a UUID, not `cam-1234567890`
+3. Navigate to `/campaigns` → try to start a campaign → if it fails, verify a toast appears (not `alert()`)
+4. Check sidebar — all icons should be SVG Lucide icons, no emojis
+5. Check settings page — no "Configured via .env" text
+
+### Browser Verification (Sprint 2)
+1. Inspect campaigns page — verify no `style=" "` attributes in DOM
+2. Inspect settings page — verify no `style=" "` attributes in DOM
+3. Verify visual consistency with agents and monitor pages
+
+### User Manual Verification
+- Open dashboard on a phone-width browser window — check that Sprint 2 styling doesn't break existing layouts (mobile responsiveness is Sprint 5+, but nothing should get worse)

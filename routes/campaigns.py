@@ -16,7 +16,7 @@ from campaign_config import (
     ContactRecord,
     load_campaign, save_campaign, list_campaigns, delete_campaign,
 )
-from campaign_dialer import CampaignDialer, get_active_dialer
+from campaign_dialer import CampaignDialer
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 
@@ -136,18 +136,14 @@ async def api_start_campaign(campaign_id: str, user: UserContext = Depends(get_c
 
 @router.post("/{campaign_id}/pause")
 async def api_pause_campaign(campaign_id: str, user: UserContext = Depends(get_current_user)):
-    dialer = get_active_dialer(campaign_id)
-    if not dialer:
-        raise HTTPException(status_code=400, detail="Campaign is not actively dialing")
+    dialer = CampaignDialer(campaign_id, user.tenant_id)
     await dialer.pause()
     return {"status": "paused", "campaign_id": campaign_id}
 
 
 @router.post("/{campaign_id}/resume")
 async def api_resume_campaign(campaign_id: str, user: UserContext = Depends(get_current_user)):
-    dialer = get_active_dialer(campaign_id)
-    if not dialer:
-        raise HTTPException(status_code=400, detail="Campaign is not actively dialing")
+    dialer = CampaignDialer(campaign_id, user.tenant_id)
     await dialer.resume()
     return {"status": "resumed", "campaign_id": campaign_id}
 

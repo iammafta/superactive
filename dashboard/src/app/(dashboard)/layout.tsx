@@ -1,5 +1,6 @@
 import Sidebar from "@/components/Sidebar";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { Toaster } from "sonner";
 
 export default function DashboardLayout({
     children,
@@ -21,6 +22,17 @@ export default function DashboardLayout({
                     {children}
                 </ErrorBoundary>
             </main>
+            <Toaster
+                theme="dark"
+                position="bottom-right"
+                toastOptions={{
+                    style: {
+                        background: "rgba(17, 24, 39, 0.95)",
+                        border: "1px solid rgba(55, 65, 81, 0.5)",
+                        color: "#f1f5f9",
+                    },
+                }}
+            />
         </div>
     );
 }

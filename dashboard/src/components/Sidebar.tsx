@@ -3,16 +3,25 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LogOut, User } from "lucide-react";
+import {
+    LogOut,
+    User,
+    LayoutDashboard,
+    Bot,
+    Phone,
+    Megaphone,
+    Headphones,
+    Settings,
+} from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
 
 const NAV_ITEMS = [
-    { href: "/", label: "Dashboard", icon: "📊" },
-    { href: "/agents", label: "Agents", icon: "🤖" },
-    { href: "/calls", label: "Calls", icon: "📞" },
-    { href: "/campaigns", label: "Campaigns", icon: "📣" },
-    { href: "/monitor", label: "Monitor", icon: "🎧" },
-    { href: "/settings", label: "Settings", icon: "⚙️" },
+    { href: "/", label: "Dashboard", Icon: LayoutDashboard },
+    { href: "/agents", label: "Agents", Icon: Bot },
+    { href: "/calls", label: "Calls", Icon: Phone },
+    { href: "/campaigns", label: "Campaigns", Icon: Megaphone },
+    { href: "/monitor", label: "Monitor", Icon: Headphones },
+    { href: "/settings", label: "Settings", Icon: Settings },
 ];
 
 export default function Sidebar() {
@@ -57,46 +66,21 @@ export default function Sidebar() {
     };
 
     return (
-        <aside
-            className="sidebar"
-            style={{
-                width: 240,
-                height: "100vh",
-                position: "fixed",
-                top: 0,
-                left: 0,
-                display: "flex",
-                flexDirection: "column",
-                padding: "24px 16px",
-                zIndex: 50,
-            }}
-        >
+        <aside className="sidebar w-[240px] h-screen fixed top-0 left-0 flex flex-col py-6 px-4 z-50">
             {/* Logo */}
-            <div
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    marginBottom: 36,
-                    paddingLeft: 8,
-                }}
-            >
+            <div className="flex items-center gap-2.5 mb-9 pl-2">
                 <img
                     src="/logo.png"
                     alt="Superactive"
-                    style={{
-                        width: "auto",
-                        height: 40,
-                        objectFit: "contain"
-                    }}
+                    className="w-auto h-10 object-contain"
                 />
-                <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.5 }}>
+                <span className="text-lg font-bold tracking-tight">
                     Superactive
                 </span>
             </div>
 
             {/* Nav Links */}
-            <nav style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
+            <nav className="flex flex-col gap-1 flex-1">
                 {NAV_ITEMS.map((item) => {
                     const isActive =
                         item.href === "/"
@@ -108,36 +92,18 @@ export default function Sidebar() {
                             href={item.href}
                             className={`sidebar-link ${isActive ? "active" : ""}`}
                         >
-                            <span style={{ fontSize: 18, width: 24, textAlign: "center" }}>
-                                {item.icon}
-                            </span>
+                            <item.Icon className="w-5 h-5 shrink-0" />
                             {item.label}
                         </Link>
                     );
                 })}
             </nav>
 
-            {/* Active calls badge */}
-            <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
-                <div
-                    className="glass-card"
-                    style={{
-                        padding: "14px 16px",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                    }}
-                >
-                    <div
-                        className="pulse-live"
-                        style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: "50%",
-                            background: "#10b981",
-                        }}
-                    />
-                    <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+            {/* Status & User */}
+            <div className="mt-auto flex flex-col gap-3">
+                <div className="glass-card px-4 py-3.5 flex items-center gap-2.5">
+                    <div className="pulse-live w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="text-[13px] text-[var(--text-secondary)]">
                         System Online
                     </span>
                 </div>
@@ -147,7 +113,7 @@ export default function Sidebar() {
                     <div className="bg-white/5 border text-sm border-white/10 rounded-2xl p-4 flex flex-col gap-3">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-gray-400">
-                                <User size={16} />
+                                <User className="w-4 h-4" />
                             </div>
                             <div className="flex-1 overflow-hidden">
                                 <p className="font-semibold text-white truncate">
@@ -160,16 +126,16 @@ export default function Sidebar() {
                             onClick={handleLogout}
                             className="w-full flex items-center justify-center gap-2 text-red-400 font-medium bg-red-500/10 hover:bg-red-500/20 py-2 rounded-xl transition-colors"
                         >
-                            <LogOut size={14} />
+                            <LogOut className="w-3.5 h-3.5" />
                             <span>Log out</span>
                         </button>
                     </div>
                 ) : (
                     <button
                         onClick={handleLogout}
-                        className="w-full flex items-center justify-center gap-2 text-red-600 font-medium bg-red-50 hover:bg-red-100 py-2 rounded-xl transition-colors mt-4"
+                        className="w-full flex items-center justify-center gap-2 text-red-400 font-medium bg-red-500/10 hover:bg-red-500/20 py-2 rounded-xl transition-colors mt-4"
                     >
-                        <LogOut size={14} />
+                        <LogOut className="w-3.5 h-3.5" />
                         <span>Force Log out</span>
                     </button>
                 )}

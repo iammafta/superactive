@@ -37,11 +37,15 @@ from routes import all_routers
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize database on startup, cleanup on shutdown."""
+    from db import init_db, get_pool
     logger.info("🚀 Superactive starting up...")
     await init_db()
     logger.info("✅ Database ready")
     yield
     logger.info("🛑 Superactive shutting down")
+    pool = await get_pool()
+    if pool:
+        await pool.close()
 
 
 # ── Rate Limiter ──────────────────────────────────────────────────────

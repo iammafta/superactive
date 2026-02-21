@@ -1,0 +1,242 @@
+# Superactive — Market Research & Strategy Report
+
+> **Date:** February 21, 2026  
+> **Scope:** Competitive landscape, capability assessment, service plan design, and lead generation strategy
+
+---
+
+## 1. Competitive Landscape
+
+### Tier 1: Developer-First Voice Agent Platforms (Direct Competitors)
+
+These are the closest competitors — they sell voice agent infrastructure to businesses and agencies.
+
+| Platform | Pricing Model | Real Cost/Min | Target | Key Differentiator |
+|---|---|---|---|---|
+| **Retell AI** | Pay-as-you-go | $0.13–$0.31 | Developers | Lowest latency (<600ms), 50+ languages, SOC2/HIPAA |
+| **Bland AI** | $299/mo + usage | $0.09 base | Enterprises | Self-hosted infra, 99.99% uptime, "Pathways" language |
+| **Vapi** | $0.05/min platform + add-ons | $0.30–$0.33 | Developers | BYOM (bring-your-own-model), 100+ languages |
+| **Synthflow** | $29–$1,250/mo tiers | $0.08–$0.13 | No-code users | Drag-and-drop builder, white-labeling, agency model |
+| **Air AI** | $25K–$100K upfront + usage | $0.11 out / $0.32 in | Enterprise | High-touch sales, fully managed agents |
+| **GoHighLevel** | $0.02–$0.06/min or $49/mo | $0.02–$0.06 | Agencies | CRM-native, white-label platform |
+
+### Tier 2: Enterprise Contact Center Giants (Indirect Competitors)
+
+These are incumbent CRM/CCaaS platforms adding AI voice capabilities on top of existing call center suites.
+
+| Platform | Pricing Model | Cost | Target | Relevance to Superactive |
+|---|---|---|---|---|
+| **Salesforce Service Cloud Voice** | $25–$50/user/mo + platform | Per-seat | Enterprise | Deep CRM, but no autonomous agent design |
+| **Five9** | $119–$159+/user/mo (50 seat min) | Per-seat, 36-mo contracts | Mid-Large enterprise | Traditional CCaaS, AI as add-on |
+| **NICE CXone** | $71–$249/user/mo | Per-seat | Enterprise | Omnichannel, AI analytics, complex setup |
+| **Dialpad AI** | $15–$170/user/mo | Per-seat | SMB–Enterprise | AI transcription, coaching — not autonomous agents |
+
+---
+
+## 2. Where Superactive Fits: The Gap
+
+```mermaid
+graph LR
+    subgraph "Developer APIs"
+        A["Retell / Vapi / Bland<br/>$0.09–$0.33/min<br/>API-only, BYOM"]
+    end
+    subgraph "💎 THE GAP"
+        B["SUPERACTIVE<br/>$0.02–$0.04 cost/min<br/>Full-stack: Agent Design + CRM + Campaigns + Lead Gen"]
+    end
+    subgraph "CRM Giants"
+        C["Salesforce / Five9 / NICE<br/>$71–$249/seat/mo<br/>Call center AI add-on"]
+    end
+    A --> B --> C
+```
+
+> [!IMPORTANT]
+> **Superactive's unique position:** Own the entire stack (Twilio → STT → LLM → TTS) at $0.02–$0.04/min cost while offering a turnkey SaaS dashboard — not just an API. This is the **sweet spot** between raw APIs (too technical) and enterprise CCaaS (too expensive, no autonomous agents).
+
+### Superactive's Core Advantages Over Competitors
+
+| Advantage | vs Developer APIs | vs CRM Giants |
+|---|---|---|
+| **Cost** | 3–10x cheaper per minute | No per-seat licensing |
+| **Turnkey dashboard** | They give you APIs; you build UI | They sell seats; you configure flows |
+| **Agent design studio** | Comparable (state machine + tools) | They don't offer autonomous agent design |
+| **Campaign dialer** | Most don't have outbound campaigns | They do, but at $100K+ annual |
+| **Live monitoring** | Some have it (Retell) | All have it, but bundled in expensive suites |
+| **Self-hosted AI stack** | They host everything (margin killer) | They use legacy IVR + bolted-on AI |
+
+---
+
+## 3. Current Capability Assessment
+
+### ✅ What We Can Do (Production-Ready)
+
+| Capability | Implementation | Status |
+|---|---|---|
+| **Inbound voice agents** | Twilio → Pipecat → Google STT → Gemini Flash → TTS | ✅ Working |
+| **Outbound voice agents** | REST API → Twilio dial → same pipeline | ✅ Working |
+| **Agent design studio** | Config-driven: system prompt, states, guardrails, tools, greeting | ✅ Working |
+| **State machine** | Multi-state flows with transitions, anti-loop, frustration detection | ✅ Working |
+| **Tool calling** | 8 tools: booking, transfer, SMS, lead logging, CRM lookup, web search, custom webhook, availability check | ✅ Working |
+| **Campaign dialer** | CSV upload → Redis/ARQ queue → concurrent outbound dialing | ✅ Working |
+| **Live call monitor** | WebSocket real-time transcripts, call info, tenant-scoped | ✅ Working |
+| **Multi-tenant auth** | JWT-based, per-tenant data isolation, rate-limited | ✅ Working |
+| **Call logging** | Full transcripts, metadata, outcomes in PostgreSQL | ✅ Working |
+| **PostgreSQL + Redis** | Migrated from SQLite, asyncpg, ARQ worker queue | ✅ Working |
+| **Docker deployment** | 4-service compose: backend, dashboard, postgres, redis, worker | ✅ Working |
+
+### ⚡ What Can Be Done Better
+
+| Area | Current State | Improvement | Priority |
+|---|---|---|---|
+| **Lead management** | Basic `log_lead` tool | Full lead pipeline: scoring, tagging, lifecycle tracking, nurture sequences | 🔴 High |
+| **Analytics** | Dashboard page exists, minimal data | Call volume, conversion rates, cost tracking, per-agent performance, ROI reporting | 🔴 High |
+| **CRM integrations** | Custom webhook only | Native Salesforce, HubSpot, Zoho, Pipedrive connectors | 🔴 High |
+| **Billing/Stripe** | Planned but not built | Usage metering, plan management, invoicing | 🔴 High |
+| **Lead generation (scraping)** | Not built | Google Maps scraper for prospect lists (see Section 5) | 🟡 Medium |
+| **Voice cloning** | Using preset Google voices | Chatterbox or ElevenLabs voice cloning per-agent | 🟡 Medium |
+| **Call recordings** | Not stored persistently | S3/GCS storage, playback in dashboard | 🟡 Medium |
+| **Reporting/exports** | None | CSV/PDF exports, scheduled reports | 🟡 Medium |
+| **Agent blueprints** | 1 blueprint in repo | Template library: Insurance, Medical, Restaurant, Real Estate, Solar, HVAC | 🟡 Medium |
+| **A/B testing** | None | Test different prompts, greetings, state flows per campaign | 🟢 Low |
+| **HIPAA compliance** | Not certified | BAA, encryption at rest, audit logs | 🟢 Low (enterprise) |
+| **Multi-language** | English only | Spanish, French, etc. (STT + TTS + prompts) | 🟢 Low |
+
+---
+
+## 4. Proposed Service Plans
+
+> [!TIP]
+> The pricing strategy targets the gap between voice APIs ($0.08–$0.33/min, no dashboard) and CRM suites ($71–$249/seat/mo, no autonomous agents). We bundle infrastructure + dashboard + AI at a price point accessible to SMBs, agencies, and mid-market.
+
+### Plan Tiers
+
+| | **Starter** | **Growth** | **Business** | **Enterprise** |
+|---|---|---|---|---|
+| **Price** | $99/mo | $349/mo | $799/mo | Custom |
+| **Included minutes** | 500 | 2,000 | 6,000 | Negotiated |
+| **Overage rate** | $0.15/min | $0.12/min | $0.10/min | $0.08/min |
+| **Agents** | 2 | 5 | 15 | Unlimited |
+| **Concurrent calls** | 3 | 10 | 25 | Unlimited |
+| **Phone numbers** | 1 | 3 | 10 | Unlimited |
+| **Campaigns** | 2 active | 10 active | Unlimited | Unlimited |
+| **Lead Gen (scraper)** | ❌ | 500 leads/mo | 2,500 leads/mo | Unlimited |
+| **CRM integrations** | Webhook only | + HubSpot, Pipedrive | + Salesforce, Zoho | All + custom |
+| **Live monitor** | ✅ | ✅ | ✅ | ✅ |
+| **Call recordings** | 30 days | 90 days | 1 year | Unlimited |
+| **Analytics** | Basic | Advanced | Advanced + exports | Custom dashboards |
+| **Voice cloning** | ❌ | ❌ | ✅ | ✅ |
+| **Blueprints** | 3 templates | All templates | All + custom | All + dedicated |
+| **Support** | Email | Email + chat | Priority | Dedicated CSM |
+| **White-label** | ❌ | ❌ | ❌ | ✅ |
+| **HIPAA** | ❌ | ❌ | Add-on ($200/mo) | Included |
+
+### Revenue Projections (Per Client)
+
+| Plan | Monthly Revenue | Your cost (at $0.03/min) | Gross Margin |
+|---|---|---|---|
+| **Starter** (500 min) | $99 | $15 | **85%** |
+| **Growth** (2,000 min) | $349 | $60 | **83%** |
+| **Business** (6,000 min) | $799 | $180 | **77%** |
+
+### Why This Beats Competitors
+
+| Metric | Superactive | Synthflow | Bland AI | Salesforce Voice |
+|---|---|---|---|---|
+| 2,000 min/mo total cost | **$349** | $750 (Growth) | $299 + $180 usage = $479 | N/A (per-seat) |
+| Dashboard included | ✅ | ✅ | ❌ (API only) | ✅ (but $50/seat) |
+| Outbound campaigns | ✅ | ✅ | ✅ | ❌ (needs Sales Cloud) |
+| Built-in lead gen | ✅ (scraper) | ❌ | ❌ | ❌ |
+| Agent design studio | ✅ | ✅ (no-code) | ✅ (Pathways) | ❌ |
+| Per-minute cost transparency | ✅ | ✅ | ✅ | ❌ |
+
+---
+
+## 5. Lead Generation Scraper — "Superactive Prospector"
+
+> [!IMPORTANT]
+> **Dual-purpose tool:** First, we use it internally to **market Superactive** by calling our own target audience directly. Second, we offer it as a **platform feature** for paying users to generate their own lead lists.
+
+### Concept
+
+```mermaid
+graph TB
+    subgraph "Superactive Prospector"
+        A["🔍 Search Query<br/>'insurance agencies in Miami'"] --> B["🗺️ Google Maps/Places API<br/>Scrape business listings"]
+        B --> C["📋 Lead Enrichment<br/>Phone, email, website, reviews, hours"]
+        C --> D["📤 Export to Campaign<br/>Auto-create campaign with contacts"]
+        D --> E["📞 Agent Calls Leads<br/>Outbound dialing begins"]
+    end
+```
+
+### Implementation Strategy
+
+| Component | Approach | Tools |
+|---|---|---|
+| **Data source** | Google Places API (legal, rate-limited) or Outscraper API | Preferred: Google Places API ($17/1K requests) |
+| **Fallback** | Apify Google Maps Scraper or custom Playwright/Puppeteer scraper | For bulk extraction at lower cost |
+| **Enrichment** | Cross-reference with Clearbit/Hunter.io for emails, LinkedIn for decision-makers | Optional premium add-on |
+| **Dashboard UI** | New `/prospector` page: search bar, map view, results table, "Add to Campaign" button | Next.js + Google Maps JS API |
+| **Pipeline** | Search → Filter → Enrich → Save to `leads` table → Auto-create campaign | FastAPI route + background worker |
+
+### Competitive Moat This Creates
+
+No other voice agent platform offers **integrated lead generation → campaign creation → AI outbound calling** in one flow. This is a unique pipeline:
+
+1. **User searches** "dentists in Austin, TX" on the Prospector page
+2. **Platform scrapes** 200 dentist offices with phone numbers
+3. **User clicks** "Create Campaign" → selects an agent blueprint (e.g., "appointment setter")
+4. **AI calls** all 200 leads, qualifies them, and logs results
+5. **Dashboard shows** conversion rates, qualified leads, booked appointments
+
+### Legal Considerations
+
+> [!WARNING]
+> - Google Maps scraping lives in a **legal grey area**. Using the official **Google Places API** is the safest path (compliant with ToS, costs ~$17/1K lookups).
+> - **TCPA compliance** is critical for outbound calling. Users must have prior consent or a legitimate basis. Consider adding a TCPA consent checkbox before campaign launch.
+> - Scraping **reviews, photos, or personal info** crosses legal lines — stick to business names, addresses, phone numbers, and categories.
+
+### Internal Use: Marketing Superactive
+
+**Phase 1 — Bootstrap marketing via self-eating:**
+1. Use the Prospector to search for "insurance agencies", "dental offices", "real estate offices" by city
+2. Build prospect lists (phone + business name + category)
+3. Design a Superactive demo agent with a pitch: "Hi, I'm calling from Superactive — we build AI phone agents that handle your inbound calls and book appointments for you..."
+4. Run outbound campaigns to **sell Superactive using Superactive**
+
+This is the ultimate product demo — prospects experience the product while being pitched it.
+
+---
+
+## 6. Go-To-Market Priorities
+
+### Phase 1: Launch-Ready (Next 2–4 weeks)
+- [ ] Stripe billing integration (metered usage + plan tiers)
+- [ ] Analytics dashboard (call volume, conversion, cost per call)
+- [ ] Agent blueprint library (5+ industry templates)
+- [ ] Call recording storage (S3/GCS)
+- [ ] TCPA consent flow for outbound campaigns
+
+### Phase 2: Differentiation (Month 2–3)
+- [ ] **Superactive Prospector** (Google Places API integration)
+- [ ] HubSpot + Pipedrive native CRM connectors
+- [ ] Lead scoring and lifecycle management
+- [ ] Self-serve onboarding flow (sign up → create agent → test call in <5 min)
+- [ ] CSV/PDF report exports
+
+### Phase 3: Scale (Month 3–6)
+- [ ] Voice cloning (Chatterbox integration)
+- [ ] White-label for agencies
+- [ ] A/B testing for agent configurations
+- [ ] Multi-language support (Spanish priority)
+- [ ] HIPAA compliance certification
+- [ ] CI/CD pipeline and automated testing
+
+---
+
+## 7. Key Takeaways
+
+1. **Superactive's cost structure is best-in-class** — $0.02–$0.04/min puts us 3–10x below competitors
+2. **The "full-stack + dashboard" position is wide open** — APIs are too raw, CRM suites are too expensive
+3. **The scraper/prospector is a genuine moat** — nobody else offers lead gen → campaign → AI calling in one platform
+4. **Pricing should start at $99/mo** to signal "serious product" vs. Synthflow's $29 toy tier
+5. **The marketing-via-product strategy** (calling prospects with our own AI) is both brilliant and a live demo
+6. **CRM integrations are table stakes** — HubSpot and Salesforce connectors needed by Month 2–3

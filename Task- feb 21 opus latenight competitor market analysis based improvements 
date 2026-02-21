@@ -1,0 +1,39 @@
+# Dashboard Polish & Productization Roadmap
+
+## Sprint 1: Kill the Embarrassments (Critical Fixes)
+- [ ] Remove dead "Upgrade Plan" button / replace with "Coming Soon" state
+- [ ] Remove dead "Live AI Support" card / replace with docs link
+- [ ] Remove "Wipe History" debug button from main dashboard
+- [ ] Fix campaign ID generation — move to server-side UUID
+- [ ] Replace all `alert()` and `console.error()` with toast notifications (install sonner)
+- [ ] Replace all emoji icons with Lucide React icons (Sidebar, settings, campaigns, monitor)
+
+## Sprint 2: Styling Unification
+- [ ] Convert campaigns page from inline styles → Tailwind
+- [ ] Convert settings page from inline styles → Tailwind
+- [ ] Convert Sidebar from inline styles → Tailwind
+- [ ] Extract reusable components: `<Modal>`, `<PageHeader>`, `<EmptyState>`
+- [ ] Audit and remove unused CSS classes from `globals.css`
+
+## Sprint 3: Onboarding & Empty States
+- [ ] Add empty state with CTA to agents, campaigns, calls pages
+- [ ] Add welcome banner on dashboard when 0 calls exist
+- [ ] Create "Quick Start" card: Create Agent → Test Call → Go Live
+
+## Sprint 4: Analytics Upgrade
+- [ ] Add time-series call volume chart using `calls_per_day` data (already in API)
+- [ ] Add cost tracking display (data exists in `AnalyticsData`)
+- [ ] Add date range picker for analytics
+- [ ] Display `hang_up_heatmap` data (already in API)
+
+## Sprint 5: Settings & Integrations (SaaS Readiness)
+- [ ] Make Twilio credentials editable in UI (fields exist in DB)
+- [ ] Remove "Configured via .env" messaging
+- [ ] Add per-tenant Twilio credential management
+
+## Future Sprints (After Docker Stabilizes)
+- [ ] Stripe billing integration
+- [ ] Superactive Prospector (Google Maps scraper)
+- [ ] Agent blueprint template library
+- [ ] Mobile responsive layouts
+- [ ] Call recording storage (S3/GCS)

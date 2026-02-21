@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import useSWR from "swr";
-import { Save, RotateCcw, Loader2, CheckCircle } from "lucide-react";
+import { Save, RotateCcw, Loader2, CheckCircle, Phone, Globe, Cloud } from "lucide-react";
+import { toast } from "sonner";
 import { API_BASE_URL, fetcher, saveSettings } from "@/lib/api";
 
 interface Settings {
@@ -53,9 +54,10 @@ export default function SettingsPage() {
             });
             await refreshSettings();
             setSaved(true);
+            toast.success("Settings saved successfully!");
             setTimeout(() => setSaved(false), 3000);
-        } catch (err) {
-            console.error("Failed to save settings:", err);
+        } catch (err: any) {
+            toast.error(`Failed to save settings: ${err.message}`);
         } finally {
             setSaving(false);
         }
@@ -78,18 +80,18 @@ export default function SettingsPage() {
     );
 
     return (
-        <div style={{ maxWidth: 700, margin: "0 auto" }}>
-            <div style={{ marginBottom: 28 }}>
-                <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>Settings</h1>
-                <p style={{ fontSize: 14, color: "var(--text-muted)" }}>Platform configuration and integrations</p>
+        <div className="max-w-[700px] mx-auto">
+            <div className="mb-7">
+                <h1 className="text-2xl font-bold mb-1">Settings</h1>
+                <p className="text-sm text-[var(--text-muted)]">Platform configuration and integrations</p>
             </div>
 
             {/* Account — Editable */}
-            <div className="glass-card" style={{ padding: 24, marginBottom: 20 }}>
-                <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>Account</h3>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div className="glass-card p-6 mb-5">
+                <h3 className="text-[15px] font-semibold mb-4">Account</h3>
+                <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>Business Name</label>
+                        <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Business Name</label>
                         <input
                             className="input"
                             value={businessName}
@@ -97,7 +99,7 @@ export default function SettingsPage() {
                         />
                     </div>
                     <div>
-                        <label style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>Owner Email</label>
+                        <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Owner Email</label>
                         <input
                             className="input"
                             value={ownerEmail}
@@ -109,111 +111,94 @@ export default function SettingsPage() {
             </div>
 
             {/* Twilio — Read-Only */}
-            <div className="glass-card" style={{ padding: 24, marginBottom: 20 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-                    <div style={{
-                        width: 32, height: 32, borderRadius: 8,
-                        background: "rgba(239, 68, 68, 0.15)", display: "flex",
-                        alignItems: "center", justifyContent: "center", fontSize: 16,
-                    }}>
-                        📞
+            <div className="glass-card p-6 mb-5">
+                <div className="flex items-center gap-2.5 mb-4">
+                    <div className="w-8 h-8 rounded-lg bg-red-500/15 flex items-center justify-center">
+                        <Phone className="w-4 h-4 text-red-400" />
                     </div>
                     <div>
-                        <h3 style={{ fontSize: 15, fontWeight: 600 }}>Twilio Integration</h3>
-                        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Configured via .env file</span>
+                        <h3 className="text-[15px] font-semibold">Twilio Integration</h3>
+                        <span className="text-[11px] text-[var(--text-muted)]">Telephony provider</span>
                     </div>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div className="flex flex-col gap-4">
                     <div>
-                        <label style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>Account SID</label>
-                        <input className="input" value={settings.twilio_sid_masked} readOnly
-                            style={{ opacity: 0.6, cursor: "not-allowed" }} />
+                        <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Account SID</label>
+                        <input className="input opacity-60 cursor-not-allowed" value={settings.twilio_sid_masked} readOnly />
                     </div>
                     <div>
-                        <label style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>Auth Token</label>
-                        <input className="input" value={settings.twilio_token_masked} readOnly type="password"
-                            style={{ opacity: 0.6, cursor: "not-allowed" }} />
+                        <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Auth Token</label>
+                        <input className="input opacity-60 cursor-not-allowed" value={settings.twilio_token_masked} readOnly type="password" />
                     </div>
                     <div>
-                        <label style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>Phone Number</label>
-                        <input className="input" value={settings.twilio_phone} readOnly
-                            style={{ opacity: 0.6, cursor: "not-allowed" }} />
+                        <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Phone Number</label>
+                        <input className="input opacity-60 cursor-not-allowed" value={settings.twilio_phone} readOnly />
                     </div>
                 </div>
             </div>
 
             {/* Server — Editable */}
-            <div className="glass-card" style={{ padding: 24, marginBottom: 20 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-                    <div style={{
-                        width: 32, height: 32, borderRadius: 8,
-                        background: "rgba(59, 130, 246, 0.15)", display: "flex",
-                        alignItems: "center", justifyContent: "center", fontSize: 16,
-                    }}>
-                        🌐
+            <div className="glass-card p-6 mb-5">
+                <div className="flex items-center gap-2.5 mb-4">
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
+                        <Globe className="w-4 h-4 text-blue-400" />
                     </div>
-                    <h3 style={{ fontSize: 15, fontWeight: 600 }}>Server Configuration</h3>
+                    <h3 className="text-[15px] font-semibold">Server Configuration</h3>
                 </div>
                 <div>
-                    <label style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>Public URL (for Twilio webhooks)</label>
+                    <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Public URL (for Twilio webhooks)</label>
                     <input
                         className="input"
                         value={publicUrl}
                         onChange={(e) => setPublicUrl(e.target.value)}
                     />
-                    <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
+                    <p className="text-xs text-[var(--text-muted)] mt-1.5">
                         Your Cloudflare Tunnel or production domain. Used by Twilio to reach your server.
                     </p>
                 </div>
             </div>
 
             {/* Google Cloud — Read-Only */}
-            <div className="glass-card" style={{ padding: 24, marginBottom: 20 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-                    <div style={{
-                        width: 32, height: 32, borderRadius: 8,
-                        background: "rgba(16, 185, 129, 0.15)", display: "flex",
-                        alignItems: "center", justifyContent: "center", fontSize: 16,
-                    }}>
-                        ☁️
+            <div className="glass-card p-6 mb-5">
+                <div className="flex items-center gap-2.5 mb-4">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center">
+                        <Cloud className="w-4 h-4 text-emerald-400" />
                     </div>
                     <div>
-                        <h3 style={{ fontSize: 15, fontWeight: 600 }}>Google Cloud</h3>
-                        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Configured via .env file</span>
+                        <h3 className="text-[15px] font-semibold">Google Cloud</h3>
+                        <span className="text-[11px] text-[var(--text-muted)]">AI & Speech services</span>
                     </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>Project ID</label>
-                        <input className="input" value={settings.gcp_project} readOnly
-                            style={{ opacity: 0.6, cursor: "not-allowed" }} />
+                        <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Project ID</label>
+                        <input className="input opacity-60 cursor-not-allowed" value={settings.gcp_project} readOnly />
                     </div>
                     <div>
-                        <label style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>Location</label>
-                        <input className="input" value={settings.gcp_location} readOnly
-                            style={{ opacity: 0.6, cursor: "not-allowed" }} />
+                        <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Location</label>
+                        <input className="input opacity-60 cursor-not-allowed" value={settings.gcp_location} readOnly />
                     </div>
                 </div>
             </div>
 
             {/* Action Buttons */}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, alignItems: "center" }}>
+            <div className="flex justify-end gap-3 items-center">
                 {saved && (
-                    <span style={{ display: "flex", alignItems: "center", gap: 6, color: "#10b981", fontSize: 13 }}>
-                        <CheckCircle size={16} />
+                    <span className="flex items-center gap-1.5 text-emerald-500 text-[13px]">
+                        <CheckCircle className="w-4 h-4" />
                         Settings saved
                     </span>
                 )}
-                <button className="btn-danger" onClick={handleReset} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <RotateCcw size={14} />
+                <button className="btn-danger flex items-center gap-1.5" onClick={handleReset}>
+                    <RotateCcw className="w-3.5 h-3.5" />
                     Reset
                 </button>
-                <button className="btn-primary" onClick={handleSave} disabled={saving}
-                    style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                <button className="btn-primary flex items-center gap-1.5" onClick={handleSave} disabled={saving}>
+                    {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                     {saving ? "Saving..." : "Save Settings"}
                 </button>
             </div>
         </div>
     );
 }
+

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Phone } from "lucide-react";
 import { useCallMonitor } from "@/hooks/useCallMonitor";
 
 export default function MonitorPage() {
@@ -37,7 +37,7 @@ export default function MonitorPage() {
             <header className="flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
-                        <span className="text-white text-lg font-bold">📞</span>
+                        <Phone className="w-5 h-5 text-white" />
                     </div>
                     <div>
                         <h1 className="text-2xl font-bold text-white tracking-tight">Live Monitor</h1>

@@ -2,6 +2,8 @@
 
 import { useState, useRef } from "react";
 import useSWR from "swr";
+import { Trash2, Plus, Upload, FileText, Play, Pause, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
 import {
     API_BASE_URL, fetcher,
     createCampaign, uploadContacts,
@@ -42,41 +44,36 @@ export default function CampaignsPage() {
     // 3. Handlers
     const handleCreate = async () => {
         if (!newCampaignName || !selectedAgentId || !contactFile) {
-            alert("Please fill in all fields and upload a CSV file.");
+            toast.error("Please fill in all fields and upload a CSV file.");
             return;
         }
 
         try {
             setIsCreating(true);
 
-            // A. Create campaign
-            const campaignId = `cam-${Date.now()}`; // Simple ID gen, or let backend handle it if improved
-            // Actually backend expects us to provide ID or it creates one? 
-            // Looking at server.py: api_create_campaign expects CampaignModel which has id. 
-            // Let's generate a clean slug-like ID.
-            const cleanId = newCampaignName.toLowerCase().replace(/[^a-z0-9]/g, "-") + "-" + Math.floor(Math.random() * 1000);
-
-            await createCampaign({
-                id: cleanId,
+            // Let the backend generate a proper UUID
+            const result = await createCampaign({
                 name: newCampaignName,
                 agent_id: selectedAgentId,
                 status: "draft",
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-                contacts: [], // populated via upload
+                contacts: [],
             });
 
-            // B. Upload contacts
-            await uploadContacts(cleanId, contactFile);
+            // Upload contacts using the server-generated ID
+            const campaignId = result?.id || result?.campaign_id;
+            if (campaignId && contactFile) {
+                await uploadContacts(campaignId, contactFile);
+            }
 
-            // C. Cleanup
+            // Cleanup
             setShowNewCampaign(false);
             setNewCampaignName("");
             setSelectedAgentId("");
             setContactFile(null);
-            mutateCampaigns(); // Refresh list
+            mutateCampaigns();
+            toast.success("Campaign created successfully!");
         } catch (err: any) {
-            alert(`Failed to create campaign: ${err.message}`);
+            toast.error(`Failed to create campaign: ${err.message}`);
         } finally {
             setIsCreating(false);
         }
@@ -84,28 +81,28 @@ export default function CampaignsPage() {
 
     const handleStart = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        try { await startCampaign(id); mutateCampaigns(); } catch (err) { console.error(err); }
+        try { await startCampaign(id); mutateCampaigns(); toast.success("Campaign started!"); } catch (err: any) { toast.error(`Failed to start: ${err.message}`); }
     };
 
     const handlePause = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        try { await pauseCampaign(id); mutateCampaigns(); } catch (err) { console.error(err); }
+        try { await pauseCampaign(id); mutateCampaigns(); toast.success("Campaign paused."); } catch (err: any) { toast.error(`Failed to pause: ${err.message}`); }
     };
 
     const handleResume = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        try { await resumeCampaign(id); mutateCampaigns(); } catch (err) { console.error(err); }
+        try { await resumeCampaign(id); mutateCampaigns(); toast.success("Campaign resumed!"); } catch (err: any) { toast.error(`Failed to resume: ${err.message}`); }
     };
 
     const handleDelete = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
         if (!confirm("Are you sure you want to delete this campaign?")) return;
-        try { await deleteCampaign(id); mutateCampaigns(); } catch (err) { console.error(err); }
+        try { await deleteCampaign(id); mutateCampaigns(); toast.success("Campaign deleted."); } catch (err: any) { toast.error(`Failed to delete: ${err.message}`); }
     };
 
     const handleReset = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        try { await resetCampaign(id); mutateCampaigns(); } catch (err) { console.error(err); }
+        try { await resetCampaign(id); mutateCampaigns(); toast.success("Campaign reset."); } catch (err: any) { toast.error(`Failed to reset: ${err.message}`); }
     };
 
     const isLoading = !campaigns && !campaignsError;
@@ -113,24 +110,24 @@ export default function CampaignsPage() {
     return (
         <div>
             {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
+            <div className="flex justify-between items-center mb-7">
                 <div>
-                    <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>Campaigns</h1>
-                    <p style={{ fontSize: 14, color: "var(--text-muted)" }}>
+                    <h1 className="text-2xl font-bold mb-1">Campaigns</h1>
+                    <p className="text-sm text-[var(--text-muted)]">
                         Outbound calling campaigns — your AI makes the calls
                     </p>
                 </div>
-                <button className="btn-primary" onClick={() => setShowNewCampaign(true)} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 18 }}>+</span> New Campaign
+                <button className="btn-primary flex items-center gap-2" onClick={() => setShowNewCampaign(true)}>
+                    <Plus className="w-5 h-5" /> New Campaign
                 </button>
             </div>
 
             {/* Loading / Error States */}
-            {isLoading && <div style={{ padding: 20, color: "var(--text-muted)" }}>Loading campaigns...</div>}
-            {campaignsError && <div style={{ padding: 20, color: "red" }}>Failed to load campaigns. Is the backend running?</div>}
+            {isLoading && <div className="p-5 text-[var(--text-muted)]">Loading campaigns...</div>}
+            {campaignsError && <div className="p-5 text-red-400">Failed to load campaigns. Is the backend running?</div>}
 
             {/* Campaign Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 16 }}>
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                 {campaigns?.map((campaign) => {
                     const pct = campaign.total_contacts > 0
                         ? Math.round((campaign.called / campaign.total_contacts) * 100)
@@ -140,26 +137,22 @@ export default function CampaignsPage() {
                         : 0;
 
                     return (
-                        <div key={campaign.id} className="glass-card" style={{ padding: 24, position: "relative" }}>
+                        <div key={campaign.id} className="glass-card p-6 relative">
                             {/* Delete button (top right) */}
                             <button
                                 onClick={(e) => handleDelete(campaign.id, e)}
-                                style={{
-                                    position: "absolute", top: 16, right: 16,
-                                    background: "none", border: "none", cursor: "pointer",
-                                    color: "var(--text-muted)", fontSize: 16
-                                }}
+                                className="absolute top-4 right-4 bg-transparent border-none cursor-pointer text-[var(--text-muted)] hover:text-red-400 transition-colors"
                                 title="Delete Campaign"
                             >
-                                🗑️
+                                <Trash2 className="w-4 h-4" />
                             </button>
 
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, paddingRight: 24 }}>
+                            <div className="flex justify-between items-start mb-4 pr-6">
                                 <div>
-                                    <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+                                    <div className="text-base font-semibold text-[var(--text-primary)] mb-1">
                                         {campaign.name}
                                     </div>
-                                    <div style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "capitalize" }}>
+                                    <div className="text-xs text-[var(--text-muted)] capitalize">
                                         Agent: {agents?.find(a => a.id === campaign.agent_id)?.name || campaign.agent_id}
                                     </div>
                                 </div>
@@ -169,59 +162,61 @@ export default function CampaignsPage() {
                             </div>
 
                             {/* Progress bar */}
-                            <div style={{ marginBottom: 16 }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Progress</span>
-                                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
+                            <div className="mb-4">
+                                <div className="flex justify-between mb-1.5">
+                                    <span className="text-xs text-[var(--text-muted)]">Progress</span>
+                                    <span className="text-xs font-semibold text-[var(--text-primary)]">
                                         {campaign.called} / {campaign.total_contacts} ({pct}%)
                                     </span>
                                 </div>
-                                <div style={{ height: 6, background: "rgba(55, 65, 81, 0.5)", borderRadius: 3, overflow: "hidden" }}>
-                                    <div style={{ width: `${pct}%`, height: "100%", borderRadius: 3, background: "linear-gradient(to right, #3b82f6, #8b5cf6)" }} />
+                                <div className="h-1.5 bg-gray-700/50 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full rounded-full bg-gradient-to-r from-blue-500 to-purple-500"
+                                        style={{ width: `${pct}%` }}
+                                    />
                                 </div>
                             </div>
 
                             {/* Stats */}
-                            <div style={{ display: "flex", gap: 20, marginBottom: 20 }}>
+                            <div className="flex gap-5 mb-5">
                                 <div>
-                                    <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>{campaign.booked}</div>
-                                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Booked</div>
+                                    <div className="text-xl font-bold text-[var(--text-primary)]">{campaign.booked}</div>
+                                    <div className="text-xs text-[var(--text-muted)]">Booked</div>
                                 </div>
                                 <div>
-                                    <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>{convRate}%</div>
-                                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Conversion</div>
+                                    <div className="text-xl font-bold text-[var(--text-primary)]">{convRate}%</div>
+                                    <div className="text-xs text-[var(--text-muted)]">Conversion</div>
                                 </div>
                                 <div>
-                                    <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>{campaign.failed}</div>
-                                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Failed</div>
+                                    <div className="text-xl font-bold text-[var(--text-primary)]">{campaign.failed}</div>
+                                    <div className="text-xs text-[var(--text-muted)]">Failed</div>
                                 </div>
                             </div>
 
                             {/* Action Buttons */}
-                            <div style={{ display: "flex", gap: 8 }}>
+                            <div className="flex gap-2">
                                 {campaign.status === "draft" && (
-                                    <button className="btn-primary" style={{ flex: 1, padding: "8px 0" }} onClick={(e) => handleStart(campaign.id, e)}>
-                                        ▶ Start Campaign
+                                    <button className="btn-primary flex-1 py-2 flex items-center justify-center gap-2" onClick={(e) => handleStart(campaign.id, e)}>
+                                        <Play className="w-3.5 h-3.5" /> Start Campaign
                                     </button>
                                 )}
                                 {campaign.status === "active" && (
-                                    <button className="btn-secondary" style={{ flex: 1, padding: "8px 0", background: "#f59e0b", color: "white", border: "none" }} onClick={(e) => handlePause(campaign.id, e)}>
-                                        ⏸ Pause
+                                    <button className="flex-1 py-2 rounded-lg bg-amber-500 text-white font-semibold text-sm hover:bg-amber-400 transition-colors flex items-center justify-center gap-2 border-none cursor-pointer" onClick={(e) => handlePause(campaign.id, e)}>
+                                        <Pause className="w-3.5 h-3.5" /> Pause
                                     </button>
                                 )}
                                 {campaign.status === "paused" && (
-                                    <button className="btn-primary" style={{ flex: 1, padding: "8px 0" }} onClick={(e) => handleResume(campaign.id, e)}>
-                                        ▶ Resume
+                                    <button className="btn-primary flex-1 py-2 flex items-center justify-center gap-2" onClick={(e) => handleResume(campaign.id, e)}>
+                                        <Play className="w-3.5 h-3.5" /> Resume
                                     </button>
                                 )}
                                 {campaign.status === "completed" && (
                                     <button
-                                        className="btn-secondary"
-                                        style={{ flex: 1, padding: "8px 0" }}
+                                        className="btn-secondary flex-1 py-2 flex items-center justify-center gap-2"
                                         onClick={(e) => handleReset(campaign.id, e)}
                                         title="Reset campaign to draft and re-run all contacts"
                                     >
-                                        ↻ Reset & Re-run
+                                        <RotateCcw className="w-3.5 h-3.5" /> Reset & Re-run
                                     </button>
                                 )}
                             </div>
@@ -233,18 +228,15 @@ export default function CampaignsPage() {
             {/* New Campaign Modal */}
             {showNewCampaign && (
                 <div
-                    style={{
-                        position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-                        background: "rgba(0, 0, 0, 0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100,
-                    }}
+                    className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100]"
                     onClick={() => setShowNewCampaign(false)}
                 >
-                    <div className="glass-card" style={{ padding: 32, width: 500 }} onClick={(e) => e.stopPropagation()}>
-                        <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 20 }}>New Campaign</h2>
+                    <div className="glass-card p-8 w-[500px]" onClick={(e) => e.stopPropagation()}>
+                        <h2 className="text-xl font-bold mb-5">New Campaign</h2>
 
-                        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                        <div className="flex flex-col gap-4">
                             <div>
-                                <label style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>Campaign Name</label>
+                                <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Campaign Name</label>
                                 <input
                                     className="input"
                                     placeholder="e.g. Q1 Renewal Outreach"
@@ -254,7 +246,7 @@ export default function CampaignsPage() {
                             </div>
 
                             <div>
-                                <label style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>Select Agent</label>
+                                <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Select Agent</label>
                                 <select
                                     className="input"
                                     value={selectedAgentId}
@@ -268,32 +260,29 @@ export default function CampaignsPage() {
                             </div>
 
                             <div>
-                                <label style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>Upload Contacts (CSV)</label>
+                                <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Upload Contacts (CSV)</label>
                                 <div
-                                    style={{
-                                        padding: "32px", border: "2px dashed var(--border)", borderRadius: 12,
-                                        textAlign: "center", cursor: "pointer",
-                                        color: contactFile ? "var(--text-primary)" : "var(--text-muted)",
-                                        fontSize: 14,
-                                        background: contactFile ? "rgba(59, 130, 246, 0.1)" : "transparent"
-                                    }}
+                                    className={`p-8 border-2 border-dashed border-[var(--border)] rounded-xl text-center cursor-pointer text-sm transition-colors ${contactFile ? "text-[var(--text-primary)] bg-blue-500/10" : "text-[var(--text-muted)]"}`}
                                     onClick={() => fileInputRef.current?.click()}
                                 >
-                                    {contactFile ? `📄 ${contactFile.name}` : "📁 Drop CSV or click to upload"}
-                                    <div style={{ fontSize: 11, marginTop: 4, opacity: 0.7 }}>Column 'phone' required</div>
+                                    <div className="flex items-center justify-center gap-2">
+                                        {contactFile ? <FileText className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
+                                        {contactFile ? contactFile.name : "Drop CSV or click to upload"}
+                                    </div>
+                                    <div className="text-[11px] mt-1 opacity-70">Column &apos;phone&apos; required</div>
                                 </div>
                                 <input
                                     type="file"
                                     ref={fileInputRef}
                                     accept=".csv"
-                                    style={{ display: "none" }}
+                                    className="hidden"
                                     onChange={(e) => {
                                         if (e.target.files?.[0]) setContactFile(e.target.files[0]);
                                     }}
                                 />
                             </div>
 
-                            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 8 }}>
+                            <div className="flex gap-3 justify-end mt-2">
                                 <button className="btn-danger" onClick={() => setShowNewCampaign(false)} disabled={isCreating}>Cancel</button>
                                 <button className="btn-primary" onClick={handleCreate} disabled={isCreating}>
                                     {isCreating ? "Creating..." : "Create Campaign"}
@@ -306,3 +295,4 @@ export default function CampaignsPage() {
         </div>
     );
 }
+
