@@ -4,12 +4,14 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LogOut, User } from "lucide-react";
+import { API_BASE_URL } from "@/lib/api";
 
 const NAV_ITEMS = [
     { href: "/", label: "Dashboard", icon: "📊" },
     { href: "/agents", label: "Agents", icon: "🤖" },
     { href: "/calls", label: "Calls", icon: "📞" },
     { href: "/campaigns", label: "Campaigns", icon: "📣" },
+    { href: "/monitor", label: "Monitor", icon: "🎧" },
     { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
@@ -23,7 +25,7 @@ export default function Sidebar() {
         const token = tokenMatch ? tokenMatch[1] : null;
 
         if (token) {
-            fetch("http://localhost:8765/api/auth/me", {
+            fetch(`${API_BASE_URL}/auth/me`, {
                 headers: { "Authorization": `Bearer ${token}` }
             })
                 .then(res => {
@@ -142,21 +144,21 @@ export default function Sidebar() {
 
                 {/* User Profile & Logout */}
                 {user ? (
-                    <div className="bg-white border text-sm border-gray-100 rounded-2xl p-4 flex flex-col gap-3 shadow-sm">
+                    <div className="bg-white/5 border text-sm border-white/10 rounded-2xl p-4 flex flex-col gap-3">
                         <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
+                            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-gray-400">
                                 <User size={16} />
                             </div>
                             <div className="flex-1 overflow-hidden">
-                                <p className="font-semibold text-gray-900 truncate">
+                                <p className="font-semibold text-white truncate">
                                     {user.tenant_name || "Settings"}
                                 </p>
-                                <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                                <p className="text-xs text-gray-400 truncate">{user.email}</p>
                             </div>
                         </div>
                         <button
                             onClick={handleLogout}
-                            className="w-full flex items-center justify-center gap-2 text-red-600 font-medium bg-red-50 hover:bg-red-100 py-2 rounded-xl transition-colors"
+                            className="w-full flex items-center justify-center gap-2 text-red-400 font-medium bg-red-500/10 hover:bg-red-500/20 py-2 rounded-xl transition-colors"
                         >
                             <LogOut size={14} />
                             <span>Log out</span>

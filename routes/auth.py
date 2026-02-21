@@ -6,9 +6,11 @@ POST /api/auth/login     - Validate credentials, returns JWT
 GET  /api/auth/me        - Get current user info (requires auth)
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 from loguru import logger
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from auth import (
     hash_password,
@@ -20,6 +22,7 @@ from auth import (
 from db import db_create_tenant, db_create_user, db_get_user_by_email, db_get_tenant
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ── Request / Response Models ─────────────────────────────────────────
@@ -43,15 +46,16 @@ class AuthResponse(BaseModel):
 # ── Register ──────────────────────────────────────────────────────────
 
 @router.post("/register", response_model=AuthResponse)
-async def register(req: RegisterRequest):
+@limiter.limit("10/hour")
+async def register(request: Request, req: RegisterRequest):
     """Create a new tenant and admin user."""
     # Check if email already exists
     existing = await db_get_user_by_email(req.email)
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
 
-    if len(req.password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if len(req.password) < 12:
+        raise HTTPException(status_code=400, detail="Password must be at least 12 characters")
 
     # Create tenant
     tenant = await db_create_tenant(name=req.business_name, email=req.email)
@@ -90,7 +94,8 @@ async def register(req: RegisterRequest):
 # ── Login ─────────────────────────────────────────────────────────────
 
 @router.post("/login", response_model=AuthResponse)
-async def login(req: LoginRequest):
+@limiter.limit("5/minute")
+async def login(request: Request, req: LoginRequest):
     """Authenticate with email + password, returns JWT."""
     user = await db_get_user_by_email(req.email)
     if not user:

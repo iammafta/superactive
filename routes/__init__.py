@@ -10,6 +10,7 @@ from routes.calls import router as calls_router
 from routes.campaigns import router as campaigns_router
 from routes.settings import router as settings_router
 from routes.telephony import router as telephony_router
+from routes.monitor import router as monitor_router
 
 all_routers = [
     auth_router,
@@ -18,4 +19,5 @@ all_routers = [
     campaigns_router,
     settings_router,
     telephony_router,
+    monitor_router,
 ]

@@ -360,13 +360,7 @@ class StateMachineProcessor(FrameProcessor):
                 "or in simpler terms. Don't re-ask what I just asked.)"
             )
 
-        # --- Conversation memory summary ---
-        # DISABLE REGEX MEMORY INJECTION (v3 change)
-        # We rely on the LLM's own context window to remember facts.
-        # Injecting "what we verify with regex" often conflicts with what the LLM actually knows.
-        # memory = self._memory.get_summary()
-        # if memory:
-        #    parts.append(f"[MEMORY: {memory}]")
+        # Note: Memory injection removed in v3 — we rely on the LLM's own context window.
 
         # --- Current state: conversational coaching ---
         # Written as natural guidance, not a database schema.

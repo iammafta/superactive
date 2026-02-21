@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from loguru import logger
 
 from db import db_persist_call, db_get_calls, db_get_analytics
+from live_monitor import live_monitor
 
 class CallLog(BaseModel):
     """Single call record — anonymized for cross-client learning."""
@@ -71,17 +72,34 @@ class CallLogger:
         )
         self._active_calls[call_id] = log
         logger.info(f"📊 Call logging started: {call_id} (agent: {agent_id}, tenant: {tenant_id})")
+        
+        live_monitor.emit("call_started", {
+            "call_id": call_id,
+            "agent_id": agent_id,
+            "business_type": business_type,
+            "tenant_id": tenant_id,
+            "started_at": log.started_at,
+            "current_state": "unknown"
+        }, tenant_id=tenant_id)
+        
         return log
 
     def add_transcript(self, call_id: str, role: str, text: str):
         """Add a transcript entry."""
         if call_id in self._active_calls:
+            ts = datetime.now().isoformat()
             self._active_calls[call_id].transcript.append({
                 "role": role,
                 "text": text,
-                "ts": datetime.now().isoformat(),
+                "ts": ts,
             })
             logger.debug(f"📝 Transcript [{role}]: {text[:80]}")
+            
+            live_monitor.emit("transcript", {
+                "role": role,
+                "text": text,
+                "ts": ts
+            }, call_id=call_id, tenant_id=self._active_calls[call_id].tenant_id)
 
     def record_state_transition(self, call_id: str, from_state: str, to_state: str, turn: int):
         """Record a state transition."""
@@ -94,6 +112,13 @@ class CallLogger:
             })
             if to_state not in log.states_visited:
                 log.states_visited.append(to_state)
+            
+            live_monitor.emit("state_transition", {
+                "from_state": from_state,
+                "to_state": to_state,
+                "turn": turn,
+                "states_visited": log.states_visited
+            }, call_id=call_id, tenant_id=log.tenant_id)
 
     def record_tool_use(self, call_id: str, tool_name: str):
         """Record that a tool was used."""
@@ -135,14 +160,26 @@ class CallLogger:
         # Remove from active
         del self._active_calls[call_id]
         logger.info(f"📊 Call logged: {call_id} | {outcome} | {log.duration_seconds}s | {log.total_turns} turns")
+        
+        live_monitor.emit("call_ended", {
+            "call_id": call_id,
+            "duration_seconds": log.duration_seconds,
+            "outcome": outcome,
+            "total_turns": log.total_turns
+        }, tenant_id=log.tenant_id)
+        
         return log
 
     async def _persist(self, log: CallLog):
         """Write call log to DB."""
         await db_persist_call(log.model_dump(), log.tenant_id)
 
-    def get_active_calls(self) -> list[dict]:
-        """Get all active call summaries (for live dashboard)."""
+    def get_active_call(self, call_id: str) -> Optional[CallLog]:
+        """Get a single active call log by ID."""
+        return self._active_calls.get(call_id)
+
+    def get_active_calls(self, tenant_id: str = None) -> list[dict]:
+        """Get active call summaries, optionally filtered by tenant."""
         return [
             {
                 "call_id": log.call_id,
@@ -155,6 +192,7 @@ class CallLogger:
                 "total_turns": len([t for t in log.transcript if t["role"] == "user"]),
             }
             for log in self._active_calls.values()
+            if tenant_id is None or log.tenant_id == tenant_id
         ]
 
     async def get_calls(self, tenant_id: str, days: int = 7, agent_id: Optional[str] = None,

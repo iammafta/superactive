@@ -14,8 +14,12 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from loguru import logger
 logger.remove()
 logger.add(sys.stderr, level="DEBUG")
@@ -40,7 +44,12 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 Superactive shutting down")
 
 
+# ── Rate Limiter ──────────────────────────────────────────────────────
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(title="Superactive", version="4.0", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ── CORS ──────────────────────────────────────────────────────────────
 # In production, lock to the dashboard origin. In dev, allow all.

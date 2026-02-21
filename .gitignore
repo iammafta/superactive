@@ -22,6 +22,9 @@ service_account.json
 .LSOverride
 
 # Data (database & call logs - regenerated at runtime)
+*.db
+*.db-wal
+*.db-shm
 data/calls/*.jsonl
 data/*.db
 data/*.db-*

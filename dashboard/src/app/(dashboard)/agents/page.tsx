@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL, fetcher } from "@/lib/api";
 import type { AgentConfig } from "@/lib/types";
-import TestChatModal from "@/components/TestChatModal";
+import TestCallModal from "@/components/TestCallModal";
 
 const TYPE_ICONS: Record<string, any> = {
     insurance: Shield,
@@ -176,9 +176,9 @@ export default function AgentsPage() {
                 })}
             </div>
 
-            {/* Test Chat Modal UI Simulator */}
+            {/* Test Call Modal (Telephony Dialer) */}
             {selectedAgent && (
-                <TestChatModal
+                <TestCallModal
                     isOpen={isTestModalOpen}
                     onClose={() => setIsTestModalOpen(false)}
                     agentId={selectedAgent.id}

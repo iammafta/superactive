@@ -159,6 +159,7 @@ async def get_db() -> aiosqlite.Connection:
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode=WAL")
     await db.execute("PRAGMA foreign_keys=ON")
+    await db.execute("PRAGMA busy_timeout=5000")
     return db
 
 
@@ -226,12 +227,19 @@ async def db_get_tenant(tenant_id: str) -> Optional[dict]:
         await db.close()
 
 
+# Whitelisted columns for dynamic UPDATE operations (prevents column injection)
+_TENANT_UPDATABLE = {"name", "email", "public_url", "plan", "twilio_sid", "twilio_token", "twilio_phone"}
+
 async def db_update_tenant(tenant_id: str, **fields) -> bool:
-    """Update tenant fields. Only updates provided fields."""
-    if not fields:
+    """Update tenant fields. Only updates provided, whitelisted fields."""
+    # Filter to allowed columns only
+    safe_fields = {k: v for k, v in fields.items() if k in _TENANT_UPDATABLE}
+    if not safe_fields:
+        if fields:
+            logger.warning(f"db_update_tenant: rejected non-whitelisted fields: {set(fields) - _TENANT_UPDATABLE}")
         return False
-    sets = ", ".join(f"{k} = ?" for k in fields)
-    vals = list(fields.values()) + [tenant_id]
+    sets = ", ".join(f"{k} = ?" for k in safe_fields)
+    vals = list(safe_fields.values()) + [tenant_id]
     db = await get_db()
     try:
         await db.execute(f"UPDATE tenants SET {sets} WHERE id = ?", vals)
@@ -485,13 +493,16 @@ async def db_delete_campaign(campaign_id: str, tenant_id: str) -> bool:
         await db.close()
 
 
+_CAMPAIGN_UPDATABLE = {"name", "agent_id", "status", "schedule", "max_concurrent", "from_number", "updated_at", "progress", "total_contacts"}
+
 async def db_update_campaign_fields(campaign_id: str, **fields) -> bool:
-    """Update specific fields on a campaign."""
-    if not fields:
-        return False
+    """Update specific whitelisted fields on a campaign."""
     fields["updated_at"] = datetime.now().isoformat()
-    sets = ", ".join(f"{k} = ?" for k in fields)
-    vals = list(fields.values()) + [campaign_id]
+    safe_fields = {k: v for k, v in fields.items() if k in _CAMPAIGN_UPDATABLE}
+    if not safe_fields:
+        return False
+    sets = ", ".join(f"{k} = ?" for k in safe_fields)
+    vals = list(safe_fields.values()) + [campaign_id]
     db = await get_db()
     try:
         await db.execute(f"UPDATE campaigns SET {sets} WHERE id = ?", vals)
@@ -540,14 +551,18 @@ async def db_get_contacts(campaign_id: str) -> list[dict]:
         await db.close()
 
 
+_CONTACT_UPDATABLE = {"phone", "name", "status", "extra", "call_sid", "attempt"}
+
 async def db_update_contact(contact_id: int, **fields) -> bool:
-    if not fields:
+    """Update whitelisted fields on a contact."""
+    safe_fields = {k: v for k, v in fields.items() if k in _CONTACT_UPDATABLE}
+    if not safe_fields:
         return False
     # Serialize extra if present
-    if "extra" in fields and isinstance(fields["extra"], dict):
-        fields["extra"] = json.dumps(fields["extra"])
-    sets = ", ".join(f"{k} = ?" for k in fields)
-    vals = list(fields.values()) + [contact_id]
+    if "extra" in safe_fields and isinstance(safe_fields["extra"], dict):
+        safe_fields["extra"] = json.dumps(safe_fields["extra"])
+    sets = ", ".join(f"{k} = ?" for k in safe_fields)
+    vals = list(safe_fields.values()) + [contact_id]
     db = await get_db()
     try:
         await db.execute(f"UPDATE contacts SET {sets} WHERE id = ?", vals)
@@ -830,13 +845,17 @@ async def _migrate_from_files(db: aiosqlite.Connection):
          settings.get("public_url", "")),
     )
 
-    # Create default admin user (password: "admin" — must be changed!)
+    # Create default admin user with random password (printed to logs)
+    import secrets
     from auth import hash_password
+    default_password = secrets.token_urlsafe(16)
     await db.execute(
         "INSERT INTO users (id, email, password_hash, tenant_id, role) VALUES (?, ?, ?, ?, ?)",
         (str(uuid.uuid4()), settings.get("owner_email", "admin@superactive.ai"),
-         hash_password("admin"), default_tenant_id, "admin"),
+         hash_password(default_password), default_tenant_id, "admin"),
     )
+    logger.warning(f"🔑 Default admin created — email: {settings.get('owner_email', 'admin@superactive.ai')} password: {default_password}")
+    logger.warning("⚠️  Change this password immediately after first login!")
 
     # Migrate agents
     agents_dir = Path(__file__).parent / "agents"

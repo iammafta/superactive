@@ -16,6 +16,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE_URL, fetcher, createAgent, updateAgent } from "@/lib/api";
 import type { AgentConfig, StateConfig } from "@/lib/types";
 import TestChatModal from "@/components/TestChatModal";
+import TestCallModal from "@/components/TestCallModal";
 
 const ALL_TOOLS = [
     { id: "book_appointment", label: "Book Appointment", icon: "📅", desc: "Schedule appointments via calendar" },
@@ -338,6 +339,7 @@ export default function AgentEditorPage() {
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState("");
     const [showTestModal, setShowTestModal] = useState(false);
+    const [showTelephonyModal, setShowTelephonyModal] = useState(false);
     const [expandedState, setExpandedState] = useState<number | null>(null);
 
     // Paradigm control (Free vs Structured)
@@ -449,9 +451,14 @@ export default function AgentEditorPage() {
                     </div>
                     <div className="flex gap-3">
                         {!isNew && (
-                            <button onClick={() => setShowTestModal(true)} className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg text-sm font-semibold hover:bg-emerald-500/20 transition-all">
-                                <PlayCircle className="w-4 h-4" /> Simulate Chat
-                            </button>
+                            <>
+                                <button onClick={() => setShowTestModal(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg text-sm font-semibold hover:bg-blue-500/20 transition-all">
+                                    <Bot className="w-4 h-4" /> Simulate Chat
+                                </button>
+                                <button onClick={() => setShowTelephonyModal(true)} className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg text-sm font-semibold hover:bg-emerald-500/20 transition-all">
+                                    <Phone className="w-4 h-4" /> Test Call
+                                </button>
+                            </>
                         )}
                         <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-500 transition-all disabled:opacity-50 shadow-lg shadow-blue-500/20">
                             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -799,6 +806,7 @@ export default function AgentEditorPage() {
             </Accordion.Root>
 
             <TestChatModal isOpen={showTestModal} onClose={() => setShowTestModal(false)} agentId={agentId} agentName={form.name || "Agent"} />
+            <TestCallModal isOpen={showTelephonyModal} onClose={() => setShowTelephonyModal(false)} agentId={agentId} agentName={form.name || "Agent"} />
         </div>
     );
 }

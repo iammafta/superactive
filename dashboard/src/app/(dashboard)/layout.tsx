@@ -1,4 +1,5 @@
 import Sidebar from "@/components/Sidebar";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 export default function DashboardLayout({
     children,
@@ -16,7 +17,9 @@ export default function DashboardLayout({
                     minHeight: "100vh",
                 }}
             >
-                {children}
+                <ErrorBoundary>
+                    {children}
+                </ErrorBoundary>
             </main>
         </div>
     );

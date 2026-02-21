@@ -130,28 +130,25 @@ TOOL_DEFINITIONS = {
 }
 
 
-# ── Shared State & Helpers ────────────────────────────────────────────
-
-# Set per-call by register_tools_for_agent so transfer_to_human can redirect the live call
-_current_call_sid: Optional[str] = None
-# Set per-call so tools can route through the client's webhook
-_current_agent_config: Optional[AgentConfig] = None
+# ── Per-Call Helpers ───────────────────────────────────────────────────
+# Note: agent_config and call_sid are passed explicitly (not globals)
+# to ensure concurrent calls don't overwrite each other's context.
 
 
-async def _try_webhook(tool_name: str, args: dict) -> Optional[dict]:
+async def _try_webhook(tool_name: str, args: dict, agent_config: Optional[AgentConfig] = None) -> Optional[dict]:
     """Try routing a tool call through the agent's webhook. Returns None if no webhook configured."""
-    if not _current_agent_config or not _current_agent_config.webhook_url:
+    if not agent_config or not agent_config.webhook_url:
         return None
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.post(
-                _current_agent_config.webhook_url,
+                agent_config.webhook_url,
                 json={
                     "tool": tool_name,
                     "arguments": args,
-                    "agent_id": _current_agent_config.id,
+                    "agent_id": agent_config.id,
                 },
-                headers=_current_agent_config.webhook_headers,
+                headers=agent_config.webhook_headers,
             )
             if response.status_code == 200:
                 return response.json()
@@ -162,9 +159,9 @@ async def _try_webhook(tool_name: str, args: dict) -> Optional[dict]:
         return None
 
 
-async def _log_booking_locally(args: dict, confirmation: str):
+async def _log_booking_locally(args: dict, confirmation: str, agent_config: Optional[AgentConfig] = None):
     """Log a booking to DB."""
-    if not _current_agent_config:
+    if not agent_config:
         logger.error("Cannot log booking: no active agent config context")
         return
         
@@ -179,20 +176,20 @@ async def _log_booking_locally(args: dict, confirmation: str):
             "confirmation": confirmation,
             "timestamp": datetime.now().isoformat(),
         }
-        await db_log_lead(booking, _current_agent_config.tenant_id)
+        await db_log_lead(booking, agent_config.tenant_id)
     except Exception as e:
         logger.error(f"Failed to log booking locally: {e}")
 
 
 # ── Tool Handlers ─────────────────────────────────────────────────────
 
-async def handle_book_appointment(params: FunctionCallParams):
+async def handle_book_appointment(params: FunctionCallParams, agent_config: Optional[AgentConfig] = None):
     """Book an appointment. Routes through webhook if configured, otherwise smart fallback."""
     args = params.arguments
     logger.info(f"📅 Booking appointment: {args}")
 
     # Try webhook first (client's real booking system)
-    webhook_result = await _try_webhook("book_appointment", args)
+    webhook_result = await _try_webhook("book_appointment", args, agent_config)
     if webhook_result is not None:
         await params.result_callback(webhook_result)
         return
@@ -211,18 +208,18 @@ async def handle_book_appointment(params: FunctionCallParams):
     }
 
     # Also log locally as a lead
-    await _log_booking_locally(args, result["confirmation"])
+    await _log_booking_locally(args, result["confirmation"], agent_config)
     logger.info(f"✅ Appointment booked: {result['confirmation']}")
     await params.result_callback(result)
 
 
-async def handle_check_availability(params: FunctionCallParams):
+async def handle_check_availability(params: FunctionCallParams, agent_config: Optional[AgentConfig] = None):
     """Check availability. Routes through webhook if configured, otherwise smart fallback."""
     args = params.arguments
     logger.info(f"📋 Checking availability: {args}")
 
     # Try webhook first (client's real calendar/booking system)
-    webhook_result = await _try_webhook("check_availability", args)
+    webhook_result = await _try_webhook("check_availability", args, agent_config)
     if webhook_result is not None:
         await params.result_callback(webhook_result)
         return
@@ -250,14 +247,14 @@ async def handle_check_availability(params: FunctionCallParams):
     await params.result_callback(result)
 
 
-async def handle_transfer_to_human(params: FunctionCallParams):
+async def handle_transfer_to_human(params: FunctionCallParams, agent_config: Optional[AgentConfig] = None, call_sid: Optional[str] = None):
     """Transfer to human via Twilio call redirect, or log if no transfer number configured."""
     args = params.arguments
     logger.info(f"🔄 Transfer requested: {args}")
 
     transfer_number = os.getenv("TRANSFER_PHONE_NUMBER", "")
 
-    if transfer_number and _current_call_sid:
+    if transfer_number and call_sid:
         # Real Twilio transfer — redirect the active call to the human's number
         try:
             from twilio.rest import Client
@@ -270,13 +267,13 @@ async def handle_transfer_to_human(params: FunctionCallParams):
                 f'<Response><Say>Connecting you to a team member now. Please hold.</Say>'
                 f'<Dial>{transfer_number}</Dial></Response>'
             )
-            client.calls(_current_call_sid).update(twiml=twiml)
+            client.calls(call_sid).update(twiml=twiml)
             result = {
                 "status": "transferred",
                 "reason": args.get("reason", "Caller request"),
                 "message": "Transferring you to a team member now.",
             }
-            logger.info(f"✅ Call {_current_call_sid} transferred to {transfer_number}")
+            logger.info(f"✅ Call {call_sid} transferred to {transfer_number}")
         except Exception as e:
             logger.error(f"Transfer failed: {e}")
             result = {
@@ -322,12 +319,12 @@ async def handle_send_followup_sms(params: FunctionCallParams):
     await params.result_callback(result)
 
 
-async def handle_log_lead(params: FunctionCallParams):
+async def handle_log_lead(params: FunctionCallParams, agent_config: Optional[AgentConfig] = None):
     """Log a lead to local storage."""
     args = params.arguments
     logger.info(f"📝 Logging lead: {args}")
     
-    if not _current_agent_config:
+    if not agent_config:
         result = {"status": "error", "message": "Internal error: no active agent context"}
         await params.result_callback(result)
         return
@@ -341,24 +338,24 @@ async def handle_log_lead(params: FunctionCallParams):
         "timestamp": datetime.now().isoformat(),
     }
 
-    await db_log_lead(lead, _current_agent_config.tenant_id)
+    await db_log_lead(lead, agent_config.tenant_id)
 
     result = {"status": "logged", "lead_id": f"LEAD-{datetime.now().strftime('%Y%m%d%H%M%S')}"}
     await params.result_callback(result)
 
 
-async def handle_lookup_client(params: FunctionCallParams):
+async def handle_lookup_client(params: FunctionCallParams, agent_config: Optional[AgentConfig] = None):
     """Look up a client by phone number."""
     args = params.arguments
     phone = args.get("phone", "")
     logger.info(f"🔍 Looking up client: {phone}")
 
-    if not _current_agent_config:
+    if not agent_config:
         result = {"found": False, "message": "Internal error: no active agent context"}
         await params.result_callback(result)
         return
 
-    client_data = await db_lookup_client(phone, _current_agent_config.tenant_id)
+    client_data = await db_lookup_client(phone, agent_config.tenant_id)
 
     if client_data:
         result = {"found": True, "client": client_data}
@@ -495,23 +492,27 @@ def get_tools_for_agent(agent_config: AgentConfig) -> list[dict]:
 
 
 def register_tools_for_agent(llm, agent_config: AgentConfig, call_id: str = None, call_logger=None, call_sid: str = None):
-    """Register tool handlers with the LLM service for this agent."""
-    global _current_call_sid, _current_agent_config
-    _current_call_sid = call_sid
-    _current_agent_config = agent_config
+    """Register tool handlers with the LLM service for this agent.
+    
+    Each handler is wrapped in a closure that captures agent_config and call_sid
+    for this specific call, preventing race conditions during concurrent calls.
+    """
+    # Capture per-call context via closure — no globals!
+    _call_agent_config = agent_config
+    _call_sid = call_sid
     registered = []
 
     for tool_name in agent_config.allowed_tools:
         if tool_name in TOOL_HANDLERS:
             handler = TOOL_HANDLERS[tool_name]
             if call_id and call_logger:
-                async def logging_wrapper(*args, _handler=handler, _name=tool_name, **kwargs):
+                async def logging_wrapper(*args, _handler=handler, _name=tool_name,
+                                         _cfg=_call_agent_config, _sid=_call_sid, **kwargs):
                     logger.info(f"🐛 DEBUG: Wrapper called for {_name} with {len(args)} args")
                     
                     call_logger.record_tool_use(call_id, _name)
                     
-                    # Reconstruction logic for Google Vertex LLM invocation signature...
-                    # (Simplified for brevity, same as previous file)
+                    # Reconstruction logic for Google Vertex LLM invocation signature
                     params = None
                     if args and hasattr(args[0], "arguments"):
                         params = args[0]
@@ -537,12 +538,18 @@ def register_tools_for_agent(llm, agent_config: AgentConfig, call_id: str = None
                             if not params.llm or not params.context:
                                 logger.warning(f"⚠️ Warning: llm or context is None for {params.function_name}")
                             logger.info(f"▶️ Executing handler for {_name}...")
-                            await _handler(params)
+                            # Pass per-call context to handlers that need it
+                            if _name in ("book_appointment", "check_availability", "log_lead", "lookup_client"):
+                                await _handler(params, agent_config=_cfg)
+                            elif _name == "transfer_to_human":
+                                await _handler(params, agent_config=_cfg, call_sid=_sid)
+                            else:
+                                await _handler(params)
                             logger.info(f"✅ Handler for {_name} completed.")
                         except Exception as e:
                             logger.error(f"❌ API Handler Crashed: {e}")
                             if params.result_callback:
-                                await params.result_callback({"error": "Tool execution failed interneally."})
+                                await params.result_callback({"error": "Tool execution failed internally."})
                     else:
                         logger.error(f"❌ Could not reconstruct FunctionCallParams from args: {args}")
                         for arg in args:
@@ -551,11 +558,20 @@ def register_tools_for_agent(llm, agent_config: AgentConfig, call_id: str = None
                                 return
                 llm.register_function(tool_name, logging_wrapper)
             else:
-                llm.register_function(tool_name, handler)
+                # No call logger — register with context closure for direct calls
+                async def direct_wrapper(params: FunctionCallParams, _handler=handler, _name=tool_name,
+                                         _cfg=_call_agent_config, _sid=_call_sid):
+                    if _name in ("book_appointment", "check_availability", "log_lead", "lookup_client"):
+                        await _handler(params, agent_config=_cfg)
+                    elif _name == "transfer_to_human":
+                        await _handler(params, agent_config=_cfg, call_sid=_sid)
+                    else:
+                        await _handler(params)
+                llm.register_function(tool_name, direct_wrapper)
             registered.append(tool_name)
         elif tool_name == "call_business_api":
             # Special: closure over agent_config for webhook URL
-            async def webhook_handler(params: FunctionCallParams, _cfg=agent_config):
+            async def webhook_handler(params: FunctionCallParams, _cfg=_call_agent_config):
                 if call_id and call_logger:
                     call_logger.record_tool_use(call_id, "call_business_api")
                 await handle_call_business_api(params, _cfg)

@@ -1,0 +1,588 @@
+# Superactive — Comprehensive Codebase Review & Market Release Assessment
+
+**Review Date:** 2026-02-20 | **Scope:** Full backend (15 files) + Next.js dashboard (all pages/components) + scripts + config
+
+---
+
+## Executive Summary
+
+Superactive is a well-architected **AI voice agent platform** with clean separation of concerns, solid authentication, and impressive domain-specific engineering (state machine, conversation memory, frustration detection). The codebase is in a strong **late-MVP state** — production-functional but with gaps that must be closed before multi-tenant market release.
+
+**Overall Readiness Score: 5.5 / 10** for market release. Great bones, specific blockers to fix.
+
+---
+
+## Table of Contents
+1. [Architecture Overview](#-architecture-overview)
+2. [End-to-End Flow Analysis](#-end-to-end-flow-analysis)
+3. [Critical Issues (P0)](#-critical-issues-p0)
+4. [High Severity Issues (P1)](#-high-severity-issues-p1)
+5. [Medium Issues (P2)](#-medium-issues-p2)
+6. [Code Quality Deep Dive](#-code-quality-deep-dive)
+7. [Frontend / Tailwind CSS Assessment](#-frontend--tailwind-css-transition)
+8. [Testing Assessment & Plan](#-testing-assessment--plan)
+9. [What's Done Well](#-whats-done-well)
+10. [Market Release Plan](#-market-release-plan)
+
+---
+
+## 🏗️ Architecture Overview
+
+```mermaid
+graph LR
+    subgraph "External Services"
+        TW["Twilio PSTN"]
+        GCP["Google Cloud\n(STT / LLM / TTS)"]
+        TAV["Tavily / DDG Search"]
+    end
+
+    subgraph "FastAPI Backend"
+        S["server.py\n(CORS, lifespan)"]
+        R_TEL["telephony.py\n(WS + webhook)"]
+        R_AUTH["auth routes"]
+        R_AGENTS["agent CRUD"]
+        R_CAMP["campaign routes"]
+        R_MON["monitor WS"]
+        R_CALLS["call/analytics"]
+        R_SET["settings"]
+    end
+
+    subgraph "Core Engine"
+        SM["StateMachine\nProcessor"]
+        STF["StateTransition\nFilter"]
+        TR["ToolRegistry"]
+        CL["CallLogger"]
+        LM["LiveMonitor\n(pub/sub)"]
+        AC["AgentConfig"]
+        CD["CampaignDialer"]
+    end
+
+    subgraph "Data Layer"
+        DB["SQLite\n(aiosqlite, WAL)"]
+        AC_JSON["agents/*.json\n(migration source)"]
+    end
+
+    subgraph "Next.js Dashboard"
+        DASH["Main Dashboard"]
+        AG_PG["Agents Page"]
+        MON_PG["Monitor Page"]
+        CAMP_PG["Campaigns"]
+        CALLS_PG["Call History"]
+        API_LIB["lib/api.ts"]
+        HOOK["useCallMonitor"]
+    end
+
+    TW -->|"µ-law audio WS"| R_TEL
+    R_TEL --> SM --> STF --> TR
+    TR -->|"webhook/fallback"| TAV
+    R_TEL --> GCP
+    SM --> CL --> LM --> R_MON
+    CL --> DB
+    R_AUTH --> DB
+    R_AGENTS --> AC --> DB
+    R_CAMP --> CD --> TW
+    CD --> DB
+    API_LIB -->|"REST + JWT"| S
+    HOOK -->|"WebSocket"| R_MON
+    DASH --> API_LIB
+    MON_PG --> HOOK
+```
+
+---
+
+## 🔄 End-to-End Flow Analysis
+
+### Flow 1: Auth → Dashboard
+
+```
+Login Page → POST /api/auth/login → verify_password (PBKDF2) → create_token (JWT)
+    → cookie set (document.cookie, not httpOnly) → middleware.ts (cookie check)
+    → GET /api/auth/me → sidebar renders user info
+```
+
+> [!WARNING]
+> **JWT stored in non-httpOnly cookie** — accessible via JavaScript, vulnerable to XSS. For SaaS release, should use `httpOnly` + `Secure` flags server-side.
+
+### Flow 2: Inbound Call
+
+```
+Twilio webhook → POST /incoming-call → validate Twilio signature
+    → return TwiML (WebSocket connect) → /media-stream WS
+    → parse_telephony_websocket → load_agent(agent_id)
+    → build Pipeline: Transport → STT → StateMachine → LLM → TransitionFilter → TTS
+    → greeting via TTSSpeakFrame → conversation loop
+    → call_logger.start_call() → live_monitor.emit("call_started")
+    → on each user utterance: transcript logged + context injected
+    → on LLM [TRANSITION: x]: state machine advances
+    → on [HANGUP]: EndFrame pushed, call ends
+    → finally: call_logger.end_call() → db_persist_call()
+```
+
+> [!CAUTION]
+> **`register_tools_for_agent()` sets module-level globals** `_current_call_sid` and `_current_agent_config`. With concurrent calls, Call B overwrites Call A's context. Tools like `book_appointment` then log leads under the **wrong tenant**.
+
+### Flow 3: Campaign Dialer
+
+```
+POST /api/campaigns/{id}/start → load_campaign → CampaignDialer(max_concurrent)
+    → asyncio.create_task(_dial_loop) → for each contact:
+        → check schedule (business hours) → semaphore acquire
+        → _make_call: update status → Twilio API create call
+            → calls /incoming-call?agent_id=X&outbound=1&contact_name=Y
+        → 30s wait between calls → retry failed once after 5min
+    → mark campaign completed
+```
+
+> [!IMPORTANT]
+> Each `_make_call` does `load_campaign` + `save_campaign` (full campaign including all contacts) under a lock. For campaigns with 1000+ contacts, this serializes a large JSON payload on every single call. Works for small campaigns but won't scale.
+
+### Flow 4: Monitor WebSocket
+
+```
+Dashboard monitor page → useCallMonitor hook
+    → ws://localhost:8765/ws/monitor (NO AUTH)
+    → receives: call_started, call_ended, transcript, state_transition
+    → sends: {action: "subscribe", call_id: "..."} for transcript detail
+    → live_monitor.broadcast_event sends to ALL connections (no tenant filter)
+```
+
+> [!CAUTION]
+> No authentication on the WebSocket. No tenant scoping on broadcasts. Any client gets all tenants' data.
+
+---
+
+## 🔴 Critical Issues (P0)
+
+### 1. Global Mutable State in Tool Registry — Concurrent Call Race Condition
+
+**File:** [tool_registry.py:136-138](file:///Users/maftaalif/Documents/Superactive/tool_registry.py#L136-L138)
+
+```python
+_current_call_sid: Optional[str] = None       # Module-level!
+_current_agent_config: Optional[AgentConfig] = None  # Module-level!
+```
+
+Every call overwrites these globals. Under concurrent calls, `transfer_to_human`, `log_lead`, and `book_appointment` use the **wrong tenant_id and call_sid**.
+
+**Fix:** Capture via closure in `register_tools_for_agent()` instead of globals.
+
+---
+
+### 2. No Authentication on Monitor WebSocket
+
+**File:** [routes/monitor.py:16-22](file:///Users/maftaalif/Documents/Superactive/routes/monitor.py#L16-L22)
+
+Anyone can connect to `/ws/monitor` and receive all call transcripts, tenant IDs, and business intelligence across all tenants.
+
+**Fix:** Validate JWT token from query parameter on connection.
+
+---
+
+### 3. Monitor Broadcasts Cross-Tenant Data
+
+**File:** [live_monitor.py:54](file:///Users/maftaalif/Documents/Superactive/live_monitor.py#L54)
+
+Global events (`call_started`, `call_ended`) go to **all** connected clients. Tenant A sees Tenant B's calls.
+
+**Fix:** Track `tenant_id` per WebSocket connection and filter broadcasts.
+
+---
+
+### 4. `.env` Contains Live Production Credentials
+
+**File:** [.env](file:///Users/maftaalif/Documents/Superactive/.env)
+
+Live Twilio SID, auth token, Tavily API key, and JWT secret are in `.env`. While `.gitignore` excludes it, the `superactive.db` file at root is **not** excluded (only `data/*.db` is gitignored).
+
+**Fix:** Add `superactive.db` to `.gitignore`. Rotate all credentials if they were ever committed.
+
+---
+
+### 5. TwiML Host Header Injection
+
+**File:** [routes/telephony.py:114](file:///Users/maftaalif/Documents/Superactive/routes/telephony.py#L114)
+
+When `PUBLIC_URL` is not set, `ws_host` comes from the untrusted `Host` HTTP header and is embedded in TwiML XML without escaping.
+
+**Fix:** Apply `xml_escape(ws_host)` or require `PUBLIC_URL` in production.
+
+---
+
+## 🟠 High Severity Issues (P1)
+
+### 6. Hardcoded `localhost:8765` in 3 Frontend Files
+
+| File | Line | Issue |
+|---|---|---|
+| [useCallMonitor.ts:37](file:///Users/maftaalif/Documents/Superactive/dashboard/src/hooks/useCallMonitor.ts#L37) | `ws://localhost:8765/ws/monitor` | Breaks in production |
+| [useCallMonitor.ts:104](file:///Users/maftaalif/Documents/Superactive/dashboard/src/hooks/useCallMonitor.ts#L104) | `http://localhost:8765/api/calls/` | Hardcoded takeover URL |
+| [Sidebar.tsx:27](file:///Users/maftaalif/Documents/Superactive/dashboard/src/components/Sidebar.tsx#L27) | `http://localhost:8765/api/auth/me` | Should use `API_BASE_URL` |
+
+**Fix:** Use `API_BASE_URL` from `lib/api.ts` everywhere. Derive WebSocket URL from it.
+
+---
+
+### 7. No Rate Limiting on Auth Endpoints
+
+No rate limiting on `/api/auth/login` or `/api/auth/register`. Combined with PBKDF2 600k iterations, brute-force attacks = CPU exhaustion.
+
+**Fix:** Add `slowapi` rate limiter.
+
+---
+
+### 8. Column Injection in Dynamic DB Updates
+
+**File:** [db.py:233](file:///Users/maftaalif/Documents/Superactive/db.py#L233)
+
+```python
+sets = ", ".join(f"{k} = ?" for k in fields)  # Column names from caller
+```
+
+`db_update_tenant()`, `db_update_campaign_fields()`, `db_update_contact()` all accept arbitrary `**fields` and interpolate column names directly into SQL.
+
+**Fix:** Whitelist allowed column names per function.
+
+---
+
+### 9. JWT in Non-HttpOnly Cookie
+
+**File:** [login/page.tsx:36](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(auth)/login/page.tsx#L36)
+
+```typescript
+document.cookie = `superactive_auth=${token}; path=/; max-age=259200; SameSite=Lax`;
+```
+
+No `Secure` flag, no `httpOnly`. Token is accessible to any JavaScript on the page (XSS vector).
+
+**Fix:** Set cookie server-side with `httpOnly; Secure; SameSite=Strict`.
+
+---
+
+### 10. No WebSocket Reconnection Logic
+
+**File:** [useCallMonitor.ts](file:///Users/maftaalif/Documents/Superactive/dashboard/src/hooks/useCallMonitor.ts)
+
+If the WebSocket disconnects (network flap, server restart), the monitor page goes dead with no auto-reconnect. Users must manually refresh.
+
+**Fix:** Add exponential backoff reconnection (common pattern: retry at 1s, 2s, 4s, 8s, max 30s).
+
+---
+
+### 11. Default Admin Password is "admin"
+
+**File:** [db.py:838](file:///Users/maftaalif/Documents/Superactive/db.py#L838)
+
+Migration creates default admin with password `"admin"`. If deployed without changing it, any attacker can log in.
+
+**Fix:** Force password change on first login, or generate a random password and print to logs.
+
+---
+
+## 🟡 Medium Issues (P2)
+
+| # | Issue | File | Notes |
+|---|---|---|---|
+| 12 | Password minimum is 6 chars (OWASP says 12) | [routes/auth.py:53](file:///Users/maftaalif/Documents/Superactive/routes/auth.py#L53) | Change to 12 |
+| 13 | `import asyncio` inside `finally` block | [telephony.py:364](file:///Users/maftaalif/Documents/Superactive/routes/telephony.py#L364) | Move to top |
+| 14 | `call_logger._active_calls` accessed directly | [monitor.py:39](file:///Users/maftaalif/Documents/Superactive/routes/monitor.py#L39) | Add public getter |
+| 15 | `get_default_agent()` loads from any tenant | [agent_config.py:211](file:///Users/maftaalif/Documents/Superactive/agent_config.py#L211) | Cross-tenant leak |
+| 16 | User profile section in sidebar uses light theme | [Sidebar.tsx:146](file:///Users/maftaalif/Documents/Superactive/dashboard/src/components/Sidebar.tsx#L146) | Uses `bg-white`, `text-gray-900` inside dark sidebar |
+| 17 | Mute/Hold/Transfer buttons in monitor are decorative | [monitor/page.tsx:226-243](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/monitor/page.tsx#L226-L243) | No handlers wired |
+| 18 | Typo in `tool_registry.py:545` | [tool_registry.py:545](file:///Users/maftaalif/Documents/Superactive/tool_registry.py#L545) | `"interneally"` → `"internally"` |
+| 19 | Typo in `live_monitor.py:17` | [live_monitor.py:17](file:///Users/maftaalif/Documents/Superactive/live_monitor.py#L17) | `"subcribed"` → `"subscribed"` |
+| 20 | `superactive.db` at repo root not in `.gitignore` | [.gitignore](file:///Users/maftaalif/Documents/Superactive/.gitignore) | Only `data/*.db` is excluded |
+| 21 | Agents page inconsistent styling (inline `style={}` vs className) | [agents/page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/agents/page.tsx) | Mix of approaches |
+| 22 | No `<title>` or SEO meta per page | all pages | Only root layout has title |
+| 23 | Customer 360 uses fake data, not real caller info | [monitor/page.tsx:35-42](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/monitor/page.tsx#L35-L42) | Need real CRM integration |
+| 24 | `torch==2.2.2` is outdated & large (1.7GB) | [requirements.txt:97](file:///Users/maftaalif/Documents/Superactive/requirements.txt#L97) | Silero VAD dep; consider edge VAD |
+
+---
+
+## 🔬 Code Quality Deep Dive
+
+### Backend Python
+
+| Category | Score | Detail |
+|---|---|---|
+| **Naming conventions** | ✅ 9/10 | Consistent `snake_case`, clear function names, well-named modules |
+| **Docstrings** | ✅ 8/10 | Every module, class, and critical function has docstrings |
+| **Error handling** | ⚠️ 7/10 | `try/except` everywhere, but some silently swallowing errors (`except: pass` in `campaign_dialer`) |
+| **Single Responsibility** | ✅ 8/10 | Clean separation: `db.py` (data), `auth.py` (auth), `tool_registry.py` (tools), etc. |
+| **DRY violations** | ⚠️ 6/10 | `_E164_RE` regex duplicated in `telephony.py` and `campaigns.py`; Twilio client creation repeated in 3 places |
+| **Type hints** | ✅ 8/10 | Consistent use of type hints, Pydantic models for all data structures |
+| **Dead code** | ⚠️ 6/10 | Commented-out memory injection (L364-369 state_machine.py); empty `extra` div in agents page; `google_search` referenced in `get_default_agent()` but doesn't exist in TOOL_DEFINITIONS |
+| **Logging** | ✅ 9/10 | Loguru with emoji-prefixed structured logs; debug-level for noisy events |
+| **Configuration** | ✅ 8/10 | All env vars via `os.getenv()` with sensible defaults |
+| **Import organization** | ⚠️ 6/10 | Lazy imports inside functions (Twilio Client imported in 3+ places inside functions); `from auth import ...` at bottom of telephony.py (L377) |
+
+### Frontend TypeScript
+
+| Category | Score | Detail |
+|---|---|---|
+| **Type safety** | ⚠️ 6/10 | `Record<string, any>` used for API payloads instead of typed interfaces; `any` in icon maps |
+| **Component structure** | ✅ 7/10 | Reasonable component decomposition, but pages are large (401 lines for main dashboard) |
+| **State management** | ✅ 8/10 | SWR for server state, local useState for UI. Clean hook pattern in `useCallMonitor` |
+| **Accessibility** | 🔴 3/10 | No ARIA labels, no keyboard navigation support, no focus management |
+| **Error boundaries** | 🔴 2/10 | No React error boundaries. Uncaught error in any component crashes the entire page |
+| **CSS consistency** | ⚠️ 5/10 | Mixed inline `style={{}}`, Tailwind classes, and custom CSS classes on the same elements |
+
+---
+
+## 🎨 Frontend / Tailwind CSS Transition
+
+### Current State
+
+The dashboard already uses **Tailwind CSS v4** (imported via `@import "tailwindcss"` in `globals.css`), but it's used in a **hybrid pattern**:
+
+1. **`globals.css`** (304 lines) — Custom CSS classes: `.glass-card`, `.sidebar`, `.btn-primary`, `.badge-*`, `.data-table`, `.input`, `.metric-card`, `.toggle-switch`, etc.
+2. **Pages/Components** — Mix of Tailwind utility classes (`className="flex items-center gap-4"`) AND inline styles (`style={{ display: "flex", gap: 12 }}`) AND custom CSS classes (`.glass-card`)
+3. **package.json** already includes `tailwind-merge` and `clsx` — merge utilities are ready
+
+### Recommendation: Full Tailwind Transition
+
+> [!TIP]
+> **You're already 60% there.** Tailwind v4 is installed and actively used. The transition is about eliminating the 304-line `globals.css` and converting inline styles to utility classes — not a ground-up rewrite.
+
+**Migration Strategy:**
+
+| Phase | Scope | Effort |
+|---|---|---|
+| **Phase 1** | Convert all inline `style={{}}` to Tailwind utilities | ~2 hours |
+| **Phase 2** | Replace `.glass-card`, `.btn-*`, `.badge-*` with `@apply` or component classes | ~1 hour |
+| **Phase 3** | Define design tokens as Tailwind CSS custom theme (replace CSS variables) | ~1 hour |
+| **Phase 4** | Remove `globals.css` entirely (except scrollbar + animations) | ~30 min |
+
+**Before:**
+```tsx
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
+```
+
+**After:**
+```tsx
+<div className="flex justify-between items-center mb-7">
+```
+
+**Custom classes → Tailwind `@apply`:**
+```css
+/* Keep in globals.css but use Tailwind primitives */
+.glass-card {
+  @apply bg-gray-900/70 backdrop-blur-xl border border-gray-700/50 rounded-2xl transition-all duration-200;
+}
+```
+
+**Key benefit:** Eliminates the current **3 competing styling systems** (inline, custom CSS classes, Tailwind utilities) into one consistent approach.
+
+---
+
+## 🧪 Testing Assessment & Plan
+
+### Current State: Zero Automated Tests
+
+The `scripts/` directory contains **7 manual one-off test scripts** — none use a test framework:
+
+| Script | Purpose | Is it automated? |
+|---|---|---|
+| `test_agent_config.py` | Loads debug_chat agent, initializes LLM | ❌ Manual, `pass` in test body |
+| `test_tool_wrapper.py` | Tests FunctionCallParams reconstruction | ❌ Manual mock, no assertions |
+| `test_search.py` | Tests Tavily search | ❌ Manual |
+| `test_tavily_direct.py` | Direct Tavily API test | ❌ Manual |
+| `reproduce_search_fail.py` | Debug script | ❌ Manual |
+| `trigger_call.py` | Initiates a test call | ❌ Manual |
+| `verify_superbowl.py` | Verifies search results | ❌ Manual |
+
+**No test framework installed** (no `pytest` in `requirements.txt`). No CI/CD pipeline.
+
+### Recommended Test Strategy
+
+#### Tier 1: Unit Tests (pytest, ~20 tests)
+
+| Test Suite | Covers | Priority |
+|---|---|---|
+| `test_auth.py` | `hash_password`, `verify_password`, `create_token`, `decode_token`, `get_current_user` | P0 |
+| `test_state_machine.py` | `ConversationMemory`, repeat detection, frustration detection, limit checks, state transitions | P0 |
+| `test_agent_config.py` | `AgentConfig` validation, `build_full_prompt()`, guardrail levels | P1 |
+| `test_db.py` | All CRUD operations (tenant, user, agent, campaign, call, lead), migration | P1 |
+| `test_tool_registry.py` | `get_tools_for_agent`, tool handler responses | P1 |
+
+#### Tier 2: Integration Tests (~10 tests)
+
+| Test | Covers |
+|---|---|
+| Auth flow | Register → Login → Token → Protected endpoint |
+| Agent CRUD | Create → Read → Update → Delete with tenant isolation |
+| Campaign lifecycle | Create → Upload CSV → Start → Pause → Resume |
+| Call logging | start_call → add_transcript → end_call → db_persist |
+
+#### Tier 3: E2E Browser Tests (~5 tests)
+
+| Test | Covers |
+|---|---|
+| Login flow | Navigate to `/login` → enter credentials → redirected to dashboard |
+| Agent management | Create agent → verify in list → edit → delete |
+| Monitor page | Connect WS → verify connection status indicator |
+
+#### How to Run (proposed):
+
+```bash
+# Install pytest
+pip install pytest pytest-asyncio httpx
+
+# Run unit tests
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ --cov=. --cov-report=html
+```
+
+---
+
+## ✅ What's Done Well
+
+| Area | Assessment |
+|---|---|
+| **PBKDF2 600k iterations** | OWASP-compliant password hashing |
+| **JWT with timezone-aware expiry** | Proper `datetime.now(timezone.utc)` usage |
+| **Twilio signature validation** | Correctly validates URL + POST body + signature |
+| **State machine architecture** | Sophisticated: memory, loop detection, re-ask complaints, frustration, forced advance |
+| **Streaming tag parser** | Elegant character-by-character buffer for `[TRANSITION: x]` tags across fragmented LLM tokens |
+| **Parameterized SQL everywhere** | No SQL injection possible via user input |
+| **E.164 phone validation** | Both incoming and CSV upload validate format |
+| **XML escaping in TwiML** | `xml_escape()` function properly escapes XML entities |
+| **DB migration system** | One-time flat-file → SQLite migration with proper error handling |
+| **Campaign dialer design** | Semaphore-based rate limiting, schedule enforcement, retry logic, per-campaign locks |
+| **Pydantic models** | Strong typing across all data structures |
+| **Design system** | Beautiful dark glassmorphism UI with coherent color palette |
+| **SWR data fetching** | Proper stale-while-revalidate pattern with error handling |
+| **Loguru logging** | Emoji-prefixed structured logs make debugging a joy |
+
+---
+
+## 🚀 Market Release Plan
+
+### Phase 1: Security Hardening (Week 1) — **BLOCKER**
+
+| Task | Effort | File(s) |
+|---|---|---|
+| Fix global tool state → closures | 2h | `tool_registry.py` |
+| Add auth to `/ws/monitor` | 1h | `routes/monitor.py` |
+| Scope monitor broadcasts by tenant | 2h | `live_monitor.py` |
+| Fix TwiML host injection | 30m | `routes/telephony.py` |
+| Add rate limiting (slowapi) | 1h | `server.py`, `routes/auth.py` |
+| HttpOnly + Secure cookie | 1h | Backend cookie endpoint + frontend |
+| Whitelist DB update columns | 1h | `db.py` |
+| Add `superactive.db` to `.gitignore` | 5m | `.gitignore` |
+| Rotate credentials (if ever committed) | 30m | External |
+
+### Phase 2: Reliability (Week 2)
+
+| Task | Effort |
+|---|---|
+| WebSocket reconnection with backoff | 2h |
+| Replace hardcoded `localhost` in frontend | 1h |
+| SQLite `busy_timeout` pragma | 10m |
+| Error boundaries in React | 2h |
+| Add `pytest` + Tier 1 unit tests (auth, state_machine) | 4h |
+| Fix light-theme sidebar user profile | 30m |
+| Wire or remove decorative softphone buttons | 1h |
+
+### Phase 3: Polish & Scale Prep (Week 3)
+
+| Task | Effort |
+|---|---|
+| Tailwind CSS full transition (Phases 1-4 above) | 4-5h |
+| Increase password minimum to 12 chars | 10m |
+| Force password change for default "admin" user | 1h |
+| Add remaining unit tests (Tier 1 + Tier 2) | 6h |
+| Add per-page `<title>` + meta | 1h |
+| Accessibility pass (ARIA labels, keyboard nav) | 4h |
+| Fix dead code + import organization | 1h |
+
+### Phase 4: Production Infrastructure (Week 4+)
+
+| Task | Effort |
+|---|---|
+| PostgreSQL migration (replace `db.py` internals) | 4-6h |
+| CI/CD pipeline (GitHub Actions) | 2h |
+| Docker containerization | 2h |
+| Health check + readiness probes | 1h |
+| Sentry error tracking | 1h |
+| Per-tenant Twilio credentials (multi-tenant SaaS) | 4h |
+| Stripe billing integration | 8h |
+
+### Timeline Summary
+
+```mermaid
+gantt
+    title Market Release Roadmap
+    dateFormat  YYYY-MM-DD
+    section Blockers
+    Security Hardening     :crit, p1, 2026-02-21, 7d
+    section Reliability
+    Stability & Tests      :p2, after p1, 7d
+    section Polish
+    Tailwind + UX          :p3, after p2, 7d
+    section Scale
+    PostgreSQL + CI/CD     :p4, after p3, 14d
+    section Launch  
+    Beta Launch            :milestone, 2026-03-28, 0d
+```
+
+> [!IMPORTANT]
+> **Minimum viable launch** requires completing Phase 1 (security) and Phase 2 (reliability). Phases 3-4 can happen post-beta launch.
+
+---
+
+## 📊 Production Readiness Scorecard
+
+| Category | Score | Blocker? |
+|---|---|---|
+| Authentication / Authorization | 6/10 | ⚠️ Cookie security, monitor WS auth |
+| Data Security | 4/10 | 🔴 Cross-tenant leaks, credential exposure |
+| Input Validation | 7/10 | ⚠️ Column injection |
+| Concurrency Safety | 3/10 | 🔴 Global tool state |
+| Error Handling | 7/10 | — |
+| Test Coverage | 1/10 | 🔴 Zero automated tests |
+| Frontend Quality | 6/10 | ⚠️ Hardcoded URLs, no error boundaries |
+| Styling Consistency | 5/10 | ⚠️ 3 competing systems |
+| Database | 6/10 | ⚠️ SQLite fine for now, Postgres for scale |
+| Logging & Observability | 9/10 | ✅ |
+| Domain Logic (State Machine) | 9/10 | ✅ |
+| API Design | 8/10 | ✅ |
+
+---
+
+## 📁 Files Reviewed (Complete)
+
+### Backend (15 files)
+| File | Lines | Verdict |
+|---|---|---|
+| [server.py](file:///Users/maftaalif/Documents/Superactive/server.py) | 77 | ✅ Clean |
+| [auth.py](file:///Users/maftaalif/Documents/Superactive/auth.py) | 128 | ✅ Solid |
+| [state_machine.py](file:///Users/maftaalif/Documents/Superactive/state_machine.py) | 599 | ✅ Excellent |
+| [tool_registry.py](file:///Users/maftaalif/Documents/Superactive/tool_registry.py) | 569 | 🔴 Global state |
+| [call_logger.py](file:///Users/maftaalif/Documents/Superactive/call_logger.py) | 215 | ✅ Good |
+| [live_monitor.py](file:///Users/maftaalif/Documents/Superactive/live_monitor.py) | 81 | 🔴 No tenant scope |
+| [db.py](file:///Users/maftaalif/Documents/Superactive/db.py) | 991 | ⚠️ Column injection |
+| [agent_config.py](file:///Users/maftaalif/Documents/Superactive/agent_config.py) | 229 | ⚠️ Default agent leak |
+| [campaign_config.py](file:///Users/maftaalif/Documents/Superactive/campaign_config.py) | 105 | ✅ Clean |
+| [campaign_dialer.py](file:///Users/maftaalif/Documents/Superactive/campaign_dialer.py) | 317 | ✅ Well-designed |
+| [routes/telephony.py](file:///Users/maftaalif/Documents/Superactive/routes/telephony.py) | 424 | 🔴 TwiML injection |
+| [routes/monitor.py](file:///Users/maftaalif/Documents/Superactive/routes/monitor.py) | 59 | 🔴 No auth |
+| [routes/auth.py](file:///Users/maftaalif/Documents/Superactive/routes/auth.py) | 137 | ⚠️ Weak password |
+| [routes/agents.py](file:///Users/maftaalif/Documents/Superactive/routes/agents.py) | 87 | ✅ Clean |
+| [routes/campaigns.py](file:///Users/maftaalif/Documents/Superactive/routes/campaigns.py) | 188 | ✅ Clean |
+
+### Frontend (13 files)
+| File | Lines | Verdict |
+|---|---|---|
+| [api.ts](file:///Users/maftaalif/Documents/Superactive/dashboard/src/lib/api.ts) | 130 | ✅ Clean |
+| [types.ts](file:///Users/maftaalif/Documents/Superactive/dashboard/src/lib/types.ts) | 102 | ✅ Good |
+| [middleware.ts](file:///Users/maftaalif/Documents/Superactive/dashboard/src/middleware.ts) | 35 | ✅ Clean |
+| [globals.css](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/globals.css) | 304 | ⚠️ Should migrate |
+| [Sidebar.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/components/Sidebar.tsx) | 179 | 🔴 Hardcoded URL |
+| [useCallMonitor.ts](file:///Users/maftaalif/Documents/Superactive/dashboard/src/hooks/useCallMonitor.ts) | 128 | 🔴 Hardcoded URL |
+| [Dashboard page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/page.tsx) | 401 | ✅ Good |
+| [Agents page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/agents/page.tsx) | 191 | ⚠️ Mixed styles |
+| [Monitor page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/monitor/page.tsx) | 266 | ⚠️ Fake CRM data |
+| [Login page.tsx](file:///Users/maftaalif/Documents/Superactive/dashboard/src/app/(auth)/login/page.tsx) | 125 | ⚠️ Non-secure cookie |
+| [package.json](file:///Users/maftaalif/Documents/Superactive/dashboard/package.json) | 36 | ✅ Deps pinned |

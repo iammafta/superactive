@@ -6,6 +6,7 @@ import os
 import re
 import uuid
 import json
+import asyncio
 
 from fastapi import APIRouter, WebSocket, Request, HTTPException, Depends
 from fastapi.responses import HTMLResponse
@@ -135,7 +136,7 @@ async def incoming_call(request: Request):
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
-        <Stream url="{ws_scheme}://{ws_host}/media-stream">
+        <Stream url="{xml_escape(ws_scheme)}://{xml_escape(ws_host)}/media-stream">
             {custom_params}
         </Stream>
     </Connect>
@@ -192,7 +193,7 @@ async def websocket_endpoint(websocket: WebSocket):
         vad = SileroVADAnalyzer(
             params=VADParams(
                 start_confidence=0.7,
-                stop_duration=1.5,
+                stop_duration=0.6,
                 min_audio_duration=0.5,
             )
         )
@@ -236,14 +237,15 @@ async def websocket_endpoint(websocket: WebSocket):
         # Build a natural outbound greeting — use the doctor/business name
         # from contact_extra if available, falling back to generic
         doctor_name = contact_extra.get("doctor", "")
+        agent_name = agent_config.name or "the agent"
         if doctor_name:
-            outbound_greeting = f"Hi {who}, this is Sarah calling from {doctor_name}'s office. How are you doing?"
+            outbound_greeting = f"Hi {who}, this is {agent_name} calling from {doctor_name}'s office. How are you doing?"
         else:
-            outbound_greeting = f"Hi {who}, this is Sarah. How are you doing today?"
+            outbound_greeting = f"Hi {who}, this is {agent_name}. How are you doing today?"
         context_lines = [
             f"IMPORTANT: You are making an OUTBOUND call. YOU called the customer, "
             f"they did NOT call you. The customer's name is {who}.",
-            f"Your name is Sarah. Use it if asked who you are.",
+            f"Your name is {agent_name}. Use it if asked who you are.",
             f"You already know why you're calling — explain it naturally when they answer.",
             f"Do NOT ask 'how can I help you?' — YOU called THEM.",
             f"Never say 'thank you for calling' — YOU initiated this call.",
@@ -358,7 +360,15 @@ async def websocket_endpoint(websocket: WebSocket):
             hang_up_state = info.get("current_state")
             if info["turn_count"] < 3:
                 outcome = "hung_up"
-        await call_logger.end_call(call_sid, outcome=outcome, hang_up_state=hang_up_state)
+        
+        # Shield the DB persist from being cancelled if the websocket dropped ungracefully
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(call_logger.end_call(call_sid, outcome=outcome, hang_up_state=hang_up_state))
+        except RuntimeError:
+            # Fallback if no loop
+            await call_logger.end_call(call_sid, outcome=outcome, hang_up_state=hang_up_state)
+
         logger.info("📞 Call ended")
 
 
