@@ -21,8 +21,23 @@ service_account.json
 .AppleDouble
 .LSOverride
 
-# Data (call logs - regenerated at runtime)
+# Data (database & call logs - regenerated at runtime)
+*.db
+*.db-wal
+*.db-shm
 data/calls/*.jsonl
+data/*.db
+data/*.db-*
+
+# Local debug logs
+*_calls.txt
+matches_*.txt
+ps_output.txt
+search_results.txt
+grep_results.txt
+md_files.txt
+git_history.txt
+victory_history.txt
 
 # Dashboard build artifacts & deps
 dashboard/node_modules/

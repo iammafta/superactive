@@ -1,0 +1,16 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+*.db
+data/
+tests/
+.env
+.env.*
+dashboard/
+node_modules/
+*.md
+blueprints/

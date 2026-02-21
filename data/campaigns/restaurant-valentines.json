@@ -1,0 +1,39 @@
+{
+  "id": "restaurant-valentines",
+  "name": "Valentine's Week Reservations",
+  "agent_id": "restaurant_host",
+  "status": "completed",
+  "contacts": [
+    {
+      "phone": "+13472578452",
+      "name": "Mafta Alif",
+      "status": "completed",
+      "call_sid": "CAf66640a3a7abaa9ecd415f0607965224",
+      "outcome": "dialed",
+      "extra": {
+        "past_visits": "3",
+        "preferred_time": "7:00 PM"
+      }
+    },
+    {
+      "phone": "+13472578452",
+      "name": "Mafta (Party of 6)",
+      "status": "completed",
+      "call_sid": "CAd39ea00e9f696a072957e0426ea6c378",
+      "outcome": "dialed",
+      "extra": {
+        "party_size": "6",
+        "preferred_time": "8:00 PM"
+      }
+    }
+  ],
+  "total_contacts": 2,
+  "called": 2,
+  "booked": 0,
+  "failed": 0,
+  "schedule": {
+    "max_concurrent": 1
+  },
+  "created_at": "2026-02-14T08:00:00",
+  "updated_at": "2026-02-19T02:42:23.912256"
+}

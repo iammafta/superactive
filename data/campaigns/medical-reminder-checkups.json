@@ -1,0 +1,28 @@
+{
+  "id": "medical-reminder-checkups",
+  "name": "Annual Checkup Reminders",
+  "agent_id": "medical_receptionist",
+  "status": "completed",
+  "contacts": [
+    {
+      "phone": "+13472578452",
+      "name": "Mafta Alif",
+      "status": "completed",
+      "call_sid": "CA1d6b080c1600428b368ddb3298a53b99",
+      "outcome": "dialed",
+      "extra": {
+        "last_visit": "2025-03-15",
+        "doctor": "Dr. Smith"
+      }
+    }
+  ],
+  "total_contacts": 1,
+  "called": 1,
+  "booked": 0,
+  "failed": 0,
+  "schedule": {
+    "max_concurrent": 1
+  },
+  "created_at": "2026-02-18T19:00:00",
+  "updated_at": "2026-02-18T23:46:31.231762"
+}

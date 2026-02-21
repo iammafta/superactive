@@ -1,18 +1,60 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { LogOut, User } from "lucide-react";
+import { API_BASE_URL } from "@/lib/api";
 
 const NAV_ITEMS = [
     { href: "/", label: "Dashboard", icon: "📊" },
     { href: "/agents", label: "Agents", icon: "🤖" },
     { href: "/calls", label: "Calls", icon: "📞" },
     { href: "/campaigns", label: "Campaigns", icon: "📣" },
+    { href: "/monitor", label: "Monitor", icon: "🎧" },
     { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
 export default function Sidebar() {
     const pathname = usePathname();
+    const router = useRouter();
+    const [user, setUser] = useState<{ email: string; tenant_name: string } | null>(null);
+
+    useEffect(() => {
+        const tokenMatch = document.cookie.match(/(?:^|; )superactive_auth=([^;]*)/);
+        const token = tokenMatch ? tokenMatch[1] : null;
+
+        if (token) {
+            fetch(`${API_BASE_URL}/auth/me`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            })
+                .then(res => {
+                    if (!res.ok) {
+                        // Token is invalid/expired — clear it automatically
+                        document.cookie = "superactive_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+                        router.push("/login");
+                        throw new Error("Invalid session");
+                    }
+                    return res.json();
+                })
+                .then(data => {
+                    if (data && data.email) {
+                        setUser(data);
+                    }
+                })
+                .catch(err => {
+                    console.error("Failed to load user info:", err);
+                    document.cookie = "superactive_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+                    router.push("/login");
+                });
+        }
+    }, [router]);
+
+    const handleLogout = () => {
+        document.cookie = "superactive_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        router.push("/login");
+        router.refresh();
+    };
 
     return (
         <aside
@@ -39,20 +81,15 @@ export default function Sidebar() {
                     paddingLeft: 8,
                 }}
             >
-                <div
+                <img
+                    src="/logo.png"
+                    alt="Superactive"
                     style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 18,
+                        width: "auto",
+                        height: 40,
+                        objectFit: "contain"
                     }}
-                >
-                    ⚡
-                </div>
+                />
                 <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.5 }}>
                     Superactive
                 </span>
@@ -81,27 +118,61 @@ export default function Sidebar() {
             </nav>
 
             {/* Active calls badge */}
-            <div
-                className="glass-card"
-                style={{
-                    padding: "14px 16px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                }}
-            >
+            <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
                 <div
-                    className="pulse-live"
+                    className="glass-card"
                     style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        background: "#10b981",
+                        padding: "14px 16px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
                     }}
-                />
-                <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                    System Online
-                </span>
+                >
+                    <div
+                        className="pulse-live"
+                        style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            background: "#10b981",
+                        }}
+                    />
+                    <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                        System Online
+                    </span>
+                </div>
+
+                {/* User Profile & Logout */}
+                {user ? (
+                    <div className="bg-white/5 border text-sm border-white/10 rounded-2xl p-4 flex flex-col gap-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-gray-400">
+                                <User size={16} />
+                            </div>
+                            <div className="flex-1 overflow-hidden">
+                                <p className="font-semibold text-white truncate">
+                                    {user.tenant_name || "Settings"}
+                                </p>
+                                <p className="text-xs text-gray-400 truncate">{user.email}</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={handleLogout}
+                            className="w-full flex items-center justify-center gap-2 text-red-400 font-medium bg-red-500/10 hover:bg-red-500/20 py-2 rounded-xl transition-colors"
+                        >
+                            <LogOut size={14} />
+                            <span>Log out</span>
+                        </button>
+                    </div>
+                ) : (
+                    <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center justify-center gap-2 text-red-600 font-medium bg-red-50 hover:bg-red-100 py-2 rounded-xl transition-colors mt-4"
+                    >
+                        <LogOut size={14} />
+                        <span>Force Log out</span>
+                    </button>
+                )}
             </div>
         </aside>
     );

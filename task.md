@@ -21,13 +21,16 @@
 - [x] Create "Sarah" agent persona with system prompt
 - [x] Update Twilio webhook to `/incoming-call` (TwiML endpoint)
 - [x] Server running clean on port 8765 — health check passes
+- [x] **Verified fix for Twilio Application Error (mismatched PUBLIC_URL)**
 - [ ] **NEXT: Make a test call to verify AI brain responds**
 
 ## Phase 3: Make It Smart (Coming Next)
-- [ ] Conversation state machine (greeting → qualification → booking → exit)
-- [ ] Anti-loop engine (max turns, frustration detection, human handoff)
-- [ ] Tool calling (book_appointment, transfer_to_human, log_lead)
-- [ ] Outbound calling support
+- [x] Conversation state machine (greeting → qualification → booking → exit)
+- [x] Anti-loop engine (max turns, frustration detection, human handoff)
+- [x] Tool calling (book_appointment, transfer_to_human, log_lead)
+- [x] Outbound calling support
+- [x] Verify fix for agent looping (Goal on Top)
+- [x] Create [startup guide](docs/startup_guide.md) for running the platform
 
 ## Phase 4: Client Dashboard
 - [ ] Next.js web app

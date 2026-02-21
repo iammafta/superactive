@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
 
 export const metadata: Metadata = {
     title: "Superactive — AI Voice Agent Platform",
@@ -21,19 +20,7 @@ export default function RootLayout({
                 />
             </head>
             <body className="antialiased">
-                <div style={{ display: "flex", minHeight: "100vh" }}>
-                    <Sidebar />
-                    <main
-                        style={{
-                            flex: 1,
-                            marginLeft: 240,
-                            padding: "28px 32px",
-                            minHeight: "100vh",
-                        }}
-                    >
-                        {children}
-                    </main>
-                </div>
+                {children}
             </body>
         </html>
     );
