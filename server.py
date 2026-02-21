@@ -3,7 +3,7 @@ Superactive -- AI Voice Agent Server
 Phase 4: SaaS Foundation
 
 Config-driven agents with tool calling, state machine, call logging,
-SQLite database, and JWT authentication.
+PostgreSQL database, and JWT authentication.
 Route modules handle individual API domains.
 """
 

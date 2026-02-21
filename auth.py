@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import jwt
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request, Response
 from loguru import logger
 
 
@@ -31,6 +31,38 @@ if not JWT_SECRET:
 
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 72  # 3 days
+
+
+# ── Cookie Config ─────────────────────────────────────────────────────
+
+COOKIE_NAME = "superactive_auth"
+COOKIE_MAX_AGE = 259200  # 3 days (matches JWT_EXPIRY_HOURS)
+COOKIE_SECURE = os.getenv("ENVIRONMENT", "development") == "production"
+COOKIE_SAMESITE = "lax"
+
+
+def set_auth_cookie(response: Response, token: str) -> None:
+    """Set an HttpOnly JWT cookie on the response."""
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        max_age=COOKIE_MAX_AGE,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
+        path="/",
+    )
+
+
+def clear_auth_cookie(response: Response) -> None:
+    """Clear the JWT cookie by expiring it immediately."""
+    response.delete_cookie(
+        key=COOKIE_NAME,
+        path="/",
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
+    )
 
 
 # ── Password Hashing (PBKDF2-SHA256, OWASP recommended) ──────────────
@@ -82,6 +114,29 @@ def decode_token(token: str) -> Optional[dict]:
         return None
 
 
+# ── WebSocket Tickets ──────────────────────────────────────────────────
+
+def create_ws_ticket(tenant_id: str) -> str:
+    """Create a short-lived (15s) JWT ticket strictly for WebSocket auth."""
+    payload = {
+        "tenant_id": tenant_id,
+        "iat": datetime.now(timezone.utc),
+        "exp": datetime.now(timezone.utc) + timedelta(seconds=15),
+        "type": "ws_ticket"
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def verify_ws_ticket(ticket: str) -> Optional[str]:
+    """Verify a WS ticket. Returns tenant_id or None."""
+    payload = decode_token(ticket)
+    if payload and payload.get("type") == "ws_ticket":
+        return payload.get("tenant_id")
+    return None
+
+
+
+
 # ── FastAPI Dependency ────────────────────────────────────────────────
 
 @dataclass
@@ -93,9 +148,13 @@ class UserContext:
     role: str
 
 
-async def get_current_user(authorization: str = Header(None)) -> UserContext:
+async def get_current_user(
+    request: Request,
+    authorization: str = Header(None),
+) -> UserContext:
     """
-    Extract and verify the Bearer token from the Authorization header.
+    Extract and verify the JWT token.
+    Checks Authorization header first, then falls back to HttpOnly cookie.
     Returns a UserContext on success, raises 401 on failure.
 
     Usage:
@@ -103,17 +162,24 @@ async def get_current_user(authorization: str = Header(None)) -> UserContext:
         async def something(user: UserContext = Depends(get_current_user)):
             # user.tenant_id is guaranteed to be valid
     """
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing authorization header")
+    token: str | None = None
 
-    # Accept "Bearer <token>" or raw token
-    parts = authorization.split()
-    if len(parts) == 2 and parts[0].lower() == "bearer":
-        token = parts[1]
-    elif len(parts) == 1:
-        token = parts[0]
-    else:
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
+    # 1. Try Authorization header
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
+        elif len(parts) == 1:
+            token = parts[0]
+        else:
+            raise HTTPException(status_code=401, detail="Invalid authorization format")
+
+    # 2. Fall back to HttpOnly cookie
+    if not token:
+        token = request.cookies.get(COOKIE_NAME)
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing authentication")
 
     payload = decode_token(token)
     if not payload:

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { API_BASE_URL } from "@/lib/api";
+import { toast } from "sonner";
+import { API_BASE_URL, getWsTicket } from "@/lib/api";
 
 export type CallLogSummary = {
     call_id: string;
@@ -20,19 +21,12 @@ export type TranscriptMessage = {
     ts: string;
 };
 
-function getToken(): string | null {
-    if (typeof document === "undefined") return null;
-    const match = document.cookie.match(/(?:^|; )superactive_auth=([^;]*)/);
-    return match ? match[1] : null;
-}
-
-function getWsUrl(): string {
+function getWsUrl(ticket: string | null): string {
     // Derive WebSocket URL from API_BASE_URL
     const base = API_BASE_URL.replace(/\/api$/, "");
     const wsScheme = base.startsWith("https") ? "wss" : "ws";
     const host = base.replace(/^https?:\/\//, "");
-    const token = getToken();
-    return `${wsScheme}://${host}/ws/monitor${token ? `?token=${token}` : ""}`;
+    return `${wsScheme}://${host}/ws/monitor${ticket ? `?token=${ticket}` : ""}`;
 }
 
 export function useCallMonitor() {
@@ -91,10 +85,15 @@ export function useCallMonitor() {
         }
     }, []);
 
-    const connect = useCallback(() => {
+    const connect = useCallback(async () => {
         if (!mountedRef.current) return;
 
-        const wsUrl = getWsUrl();
+        // Fetch a short-lived ticket before connecting
+        const ticket = await getWsTicket();
+
+        if (!mountedRef.current) return; // check again after async fetch
+
+        const wsUrl = getWsUrl(ticket);
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
@@ -152,18 +151,15 @@ export function useCallMonitor() {
 
     const triggerTakeover = async (callId: string) => {
         try {
-            const token = getToken();
             const res = await fetch(`${API_BASE_URL}/calls/${callId}/takeover`, {
                 method: "POST",
-                headers: {
-                    ...(token ? { "Authorization": `Bearer ${token}` } : {})
-                }
+                credentials: "include",
             });
             if (!res.ok) throw new Error("Takeover failed");
             return await res.json();
         } catch (error) {
             console.error(error);
-            alert("Failed to initiate takeover");
+            toast.error("Failed to initiate takeover");
         }
     };
 

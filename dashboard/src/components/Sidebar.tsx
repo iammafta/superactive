@@ -30,37 +30,36 @@ export default function Sidebar() {
     const [user, setUser] = useState<{ email: string; tenant_name: string } | null>(null);
 
     useEffect(() => {
-        const tokenMatch = document.cookie.match(/(?:^|; )superactive_auth=([^;]*)/);
-        const token = tokenMatch ? tokenMatch[1] : null;
-
-        if (token) {
-            fetch(`${API_BASE_URL}/auth/me`, {
-                headers: { "Authorization": `Bearer ${token}` }
-            })
-                .then(res => {
-                    if (!res.ok) {
-                        // Token is invalid/expired — clear it automatically
-                        document.cookie = "superactive_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-                        router.push("/login");
-                        throw new Error("Invalid session");
-                    }
-                    return res.json();
-                })
-                .then(data => {
-                    if (data && data.email) {
-                        setUser(data);
-                    }
-                })
-                .catch(err => {
-                    console.error("Failed to load user info:", err);
-                    document.cookie = "superactive_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        fetch(`${API_BASE_URL}/auth/me`, {
+            credentials: "include",
+        })
+            .then(res => {
+                if (!res.ok) {
                     router.push("/login");
-                });
-        }
+                    throw new Error("Invalid session");
+                }
+                return res.json();
+            })
+            .then(data => {
+                if (data && data.email) {
+                    setUser(data);
+                }
+            })
+            .catch(err => {
+                console.error("Failed to load user info:", err);
+                router.push("/login");
+            });
     }, [router]);
 
-    const handleLogout = () => {
-        document.cookie = "superactive_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    const handleLogout = async () => {
+        try {
+            await fetch(`${API_BASE_URL}/auth/logout`, {
+                method: "POST",
+                credentials: "include",
+            });
+        } catch (err) {
+            console.error("Logout request failed:", err);
+        }
         router.push("/login");
         router.refresh();
     };

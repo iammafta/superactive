@@ -6,7 +6,7 @@ POST /api/auth/login     - Validate credentials, returns JWT
 GET  /api/auth/me        - Get current user info (requires auth)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr
 from loguru import logger
 from slowapi import Limiter
@@ -16,7 +16,10 @@ from auth import (
     hash_password,
     verify_password,
     create_token,
+    create_ws_ticket,
     get_current_user,
+    set_auth_cookie,
+    clear_auth_cookie,
     UserContext,
 )
 from db import db_create_tenant, db_create_user, db_get_user_by_email, db_get_tenant
@@ -47,7 +50,7 @@ class AuthResponse(BaseModel):
 
 @router.post("/register", response_model=AuthResponse)
 @limiter.limit("10/hour")
-async def register(request: Request, req: RegisterRequest):
+async def register(request: Request, req: RegisterRequest, response: Response):
     """Create a new tenant and admin user."""
     # Check if email already exists
     existing = await db_get_user_by_email(req.email)
@@ -79,6 +82,8 @@ async def register(request: Request, req: RegisterRequest):
 
     logger.info(f"🆕 New tenant registered: {req.business_name} ({req.email})")
 
+    set_auth_cookie(response, token)
+
     return AuthResponse(
         token=token,
         user={
@@ -95,7 +100,7 @@ async def register(request: Request, req: RegisterRequest):
 
 @router.post("/login", response_model=AuthResponse)
 @limiter.limit("5/minute")
-async def login(request: Request, req: LoginRequest):
+async def login(request: Request, req: LoginRequest, response: Response):
     """Authenticate with email + password, returns JWT."""
     user = await db_get_user_by_email(req.email)
     if not user:
@@ -112,6 +117,8 @@ async def login(request: Request, req: LoginRequest):
     )
 
     logger.info(f"🔑 User logged in: {req.email}")
+
+    set_auth_cookie(response, token)
 
     return AuthResponse(
         token=token,
@@ -139,3 +146,25 @@ async def me(user: UserContext = Depends(get_current_user)):
         "tenant_name": tenant["name"] if tenant else "",
         "plan": tenant.get("plan", "starter") if tenant else "starter",
     }
+
+
+# ── Logout ────────────────────────────────────────────────────────────
+
+@router.post("/logout")
+async def logout(response: Response):
+    """Clear the auth cookie."""
+    clear_auth_cookie(response)
+    return {"ok": True}
+
+
+# ── WebSocket Tickets ─────────────────────────────────────────────────
+
+@router.post("/ticket")
+async def get_ws_ticket(user: UserContext = Depends(get_current_user)):
+    """
+    Generate a short-lived (15s) ticket for WebSocket auth.
+    Requires existing valid auth (cookie or header).
+    """
+    ticket = create_ws_ticket(user.tenant_id)
+    return {"ticket": ticket}
+

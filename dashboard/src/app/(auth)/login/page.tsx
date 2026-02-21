@@ -22,6 +22,7 @@ export default function LoginPage() {
             const res = await fetch(`${API_BASE_URL}/auth/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: "include",
                 body: JSON.stringify({ email, password }),
             });
 
@@ -30,10 +31,8 @@ export default function LoginPage() {
                 throw new Error(data.detail || "Login failed");
             }
 
-            const { token } = await res.json();
-
-            // Set cookie (in production, use secure/httpOnly flags depending on architecture)
-            document.cookie = `superactive_auth=${token}; path=/; max-age=259200; SameSite=Lax`;
+            // Token is now set as HttpOnly cookie by the server
+            await res.json();
 
             router.push("/");
             router.refresh();

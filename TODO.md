@@ -13,7 +13,7 @@
 - [x] `routes/auth.py` — Password minimum 12 chars
 - [x] `db.py` — Random default admin password (printed to logs)
 - [x] `.gitignore` — Exclude `*.db`, removed `superactive.db` from tracking
-- [ ] JWT cookie — Set HttpOnly/Secure/SameSite (requires refactoring cookie flow)
+- [x] JWT cookie — Set HttpOnly/Secure/SameSite (requires refactoring cookie flow)
 
 ---
 
@@ -27,7 +27,7 @@
 
 ### Phase 3: Testing ✅
 - [x] 38 tests passing: `test_auth.py` (10), `test_state_machine.py` (13), `test_tool_registry.py` (8)
-- [ ] `test_db.py` — CRUD, tenant isolation
+- [x] `test_db_postgres.py` — CRUD, tenant isolation (5 tests)
 - [ ] Integration tests: auth flow, agent CRUD, campaign lifecycle
 
 ---
@@ -110,7 +110,7 @@
 ---
 
 ## Remaining (Future / Backlog)
-- [ ] HttpOnly JWT cookie flow
+- [x] HttpOnly JWT cookie flow
 - [ ] CI/CD pipeline (`.github/workflows/test.yml`)
 - [ ] Stripe billing integration
 - [ ] Superactive Prospector (Google Maps scraper)

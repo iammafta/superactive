@@ -11,7 +11,7 @@ import json
 
 from live_monitor import live_monitor
 from call_logger import call_logger
-from auth import decode_token
+from auth import verify_ws_ticket
 
 router = APIRouter(tags=["monitor"])
 
@@ -22,12 +22,8 @@ async def monitor_endpoint(websocket: WebSocket, token: str = Query(default=None
     Requires JWT token via ?token= query parameter.
     Clients can send {"action": "subscribe", "call_id": "..."} to get detailed transcripts.
     """
-    # Authenticate via JWT token
-    tenant_id = None
-    if token:
-        payload = decode_token(token)
-        if payload:
-            tenant_id = payload.get("tenant_id")
+    # Authenticate via short-lived WS ticket
+    tenant_id = verify_ws_ticket(token) if token else None
     
     if not tenant_id:
         await websocket.close(code=4001, reason="Unauthorized")

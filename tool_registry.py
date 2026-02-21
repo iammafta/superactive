@@ -4,7 +4,7 @@ Superactive — Tool Registry
 Dynamic tool registration for Pipecat's LLM function calling.
 Each agent config specifies which tools it can access — this module
 registers only those tools with the LLM service.
-Persisted in SQLite via db.py.
+Persisted in PostgreSQL via db.py.
 """
 
 import os
@@ -263,9 +263,11 @@ async def handle_transfer_to_human(params: FunctionCallParams, agent_config: Opt
                 os.getenv("TWILIO_AUTH_TOKEN"),
             )
             # Update the live call with TwiML that dials the human
+            from xml.sax.saxutils import escape as _xml_esc
+            safe_number = _xml_esc(transfer_number, {'"': '&quot;', "'": '&apos;'})
             twiml = (
                 f'<Response><Say>Connecting you to a team member now. Please hold.</Say>'
-                f'<Dial>{transfer_number}</Dial></Response>'
+                f'<Dial>{safe_number}</Dial></Response>'
             )
             client.calls(call_sid).update(twiml=twiml)
             result = {

@@ -20,6 +20,7 @@ export default function RegisterPage() {
             const res = await fetch("http://localhost:8765/api/auth/register", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: "include",
                 body: JSON.stringify({ email, password, business_name: businessName }),
             });
 
@@ -28,9 +29,8 @@ export default function RegisterPage() {
                 throw new Error(data.detail || "Registration failed");
             }
 
-            const { token } = await res.json();
-
-            document.cookie = `superactive_auth=${token}; path=/; max-age=259200; SameSite=Lax`;
+            // Token is now set as HttpOnly cookie by the server
+            await res.json();
 
             router.push("/");
             router.refresh();

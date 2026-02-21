@@ -259,7 +259,7 @@ def _agent_row_to_dict(row: asyncpg.Record) -> dict:
         if isinstance(d.get(key), str):
             try:
                 d[key] = json.loads(d[key])
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 pass
     
     d["active"] = bool(d.get("active", 1))
@@ -366,7 +366,7 @@ def _campaign_row_to_dict(row: asyncpg.Record) -> dict:
     if isinstance(d.get("schedule"), str) and d["schedule"]:
         try:
             d["schedule"] = json.loads(d["schedule"])
-        except:
+        except (json.JSONDecodeError, TypeError, ValueError):
             d["schedule"] = {}
             
     if "created_at" in d and hasattr(d["created_at"], "isoformat"):
@@ -431,7 +431,7 @@ async def db_load_campaign(campaign_id: str, tenant_id: str = None) -> Optional[
             cd = dict(c)
             if isinstance(cd.get("extra"), str):
                 try: cd["extra"] = json.loads(cd["extra"])
-                except: cd["extra"] = {}
+                except (json.JSONDecodeError, TypeError, ValueError): cd["extra"] = {}
             if "created_at" in cd and hasattr(cd["created_at"], "isoformat"):
                 cd["created_at"] = cd["created_at"].isoformat()
             contacts.append(cd)
@@ -460,7 +460,7 @@ async def db_delete_campaign(campaign_id: str, tenant_id: str) -> bool:
         return not res.endswith("0")
 
 
-_CAMPAIGN_UPDATABLE = {"name", "agent_id", "status", "schedule", "max_concurrent", "from_number", "progress", "total_contacts"}
+_CAMPAIGN_UPDATABLE = {"name", "agent_id", "status", "schedule", "total_contacts", "called", "booked", "failed"}
 
 async def db_update_campaign_fields(campaign_id: str, **fields) -> bool:
     safe_fields = {k: v for k, v in fields.items() if k in _CAMPAIGN_UPDATABLE}
@@ -511,7 +511,7 @@ async def db_get_contacts(campaign_id: str) -> list[dict]:
             d = dict(r)
             if isinstance(d.get("extra"), str):
                 try: d["extra"] = json.loads(d["extra"])
-                except: pass
+                except (json.JSONDecodeError, TypeError, ValueError): pass
             if "created_at" in d and hasattr(d["created_at"], "isoformat"):
                 d["created_at"] = d["created_at"].isoformat()
             results.append(d)
@@ -570,11 +570,11 @@ async def db_persist_call(call_log: dict, tenant_id: str):
     # Parse python datetimes for asyncpg if available
     try:
         started_at = datetime.fromisoformat(call_log["started_at"]) if call_log.get("started_at") else None
-    except: started_at = None
+    except (ValueError, TypeError): started_at = None
     
     try:
         ended_at = datetime.fromisoformat(call_log["ended_at"]) if call_log.get("ended_at") else None
-    except: ended_at = None
+    except (ValueError, TypeError): ended_at = None
     
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -608,7 +608,7 @@ def _call_row_to_dict(row: asyncpg.Record) -> dict:
     for key in ("states_visited", "state_transitions", "tools_used", "transcript"):
         if isinstance(d.get(key), str):
             try: d[key] = json.loads(d[key])
-            except: pass
+            except (json.JSONDecodeError, TypeError, ValueError): pass
     d["frustration_triggered"] = bool(d.get("frustration_triggered", 0))
     d["escalation_triggered"] = bool(d.get("escalation_triggered", 0))
     d["repeat_detected"] = bool(d.get("repeat_detected", 0))
