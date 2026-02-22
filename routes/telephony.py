@@ -44,6 +44,79 @@ from state_machine import (
     TranscriptLoggerProcessor, TranscriptLoggerFilter,
 )
 from call_logger import call_logger
+import time
+from telemetry import get_meter, get_tracer
+from pipecat.frames.frames import AudioRawFrame, ErrorFrame
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from opentelemetry.metrics import CallbackOptions, Observation
+
+meter = get_meter("superactive.pipecat")
+tracer = get_tracer("superactive.pipecat")
+
+# Create Instruments
+stt_latency_histogram = meter.create_histogram(
+    name="pipecat.stt.latency",
+    description="Latency of Speech-to-Text processing",
+    unit="ms"
+)
+
+pipeline_lag_histogram = meter.create_histogram(
+    name="pipecat.pipeline.lag",
+    description="Time taken for a frame to traverse the pipeline",
+    unit="ms"
+)
+
+stt_failure_counter = meter.create_counter(
+    name="pipecat.stt.failures",
+    description="Number of STT failures encountered",
+)
+
+class TelemetryFrameProcessor(FrameProcessor):
+    """
+    Hooks into the Pipecat pipeline to record OpenTelemetry metrics:
+    - Audio input to Transcription latency
+    - General frame processing lag
+    - Pipeline Error tracking (including STT failures)
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._last_audio_time = None
+        
+    async def process_frame(self, frame, direction):
+        now = time.time()
+        
+        # Track when audio enters the system
+        if direction == FrameDirection.DOWNSTREAM and isinstance(frame, AudioRawFrame):
+            if not self._last_audio_time:
+                self._last_audio_time = now
+
+        # Record STT latency when transcription arrives
+        if direction == FrameDirection.DOWNSTREAM and type(frame).__name__ == "TranscriptionFrame":
+            if self._last_audio_time:
+                latency_ms = (now - self._last_audio_time) * 1000
+                stt_latency_histogram.record(latency_ms)
+                self._last_audio_time = None  # Reset for next utterance
+                
+        # Track pipeline errors natively
+        if isinstance(frame, ErrorFrame):
+            with tracer.start_as_current_span(f"pipeline_error_frame") as span:
+                span.record_exception(Exception(frame.error))
+                span.set_attribute("fatal", frame.fatal)
+                
+                # If error originated from STT, increment failure metric
+                # (usually STT errors mention "Google" or "recognize")
+                if "recognize" in frame.error.lower() or "speech" in frame.error.lower():
+                    stt_failure_counter.add(1)
+                    span.set_attribute("error.type", "stt_failure")
+                
+        # Forward frame
+        await super().process_frame(frame, direction)
+        
+        # Calculate lag across this processor step
+        processing_time_ms = (time.time() - now) * 1000
+        pipeline_lag_histogram.record(processing_time_ms, {"frame_type": type(frame).__name__})
+        
+        await self.push_frame(frame, direction)
 
 router = APIRouter(tags=["telephony"])
 
@@ -298,8 +371,11 @@ async def websocket_endpoint(websocket: WebSocket):
             monitor=None, call_id=call_sid, call_logger=call_logger
         )
 
+    telemetry_processor = TelemetryFrameProcessor()
+
     pipeline_components = [
         transport.input(),           # Twilio audio in
+        telemetry_processor,         # Telemetry Metrics (Audio in)
         stt,                         # Speech → Text
         state_processor,             # State-aware context (or transcript logger)
         context_aggregator.user(),   # Accumulate user speech
@@ -310,6 +386,8 @@ async def websocket_endpoint(websocket: WebSocket):
         context_aggregator.assistant(),  # Store assistant response
     ]
 
+    from pipecat.utils.tracing import TurnTraceObserver
+
     pipeline = Pipeline(pipeline_components)
 
     task = PipelineTask(
@@ -319,6 +397,7 @@ async def websocket_endpoint(websocket: WebSocket):
             enable_metrics=True,
             enable_usage_metrics=True,
         ),
+        observers=[TurnTraceObserver()]
     )
 
     # Kick off the conversation with the appropriate greeting

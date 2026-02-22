@@ -13,6 +13,9 @@ from loguru import logger
 from arq import Worker
 from arq.connections import RedisSettings
 
+from telemetry import init_telemetry
+init_telemetry("superactive-worker")
+
 # Import your database and telephony logic
 from db import (
     init_db, get_pool,

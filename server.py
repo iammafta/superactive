@@ -28,6 +28,9 @@ logger.add(sys.stderr, level="DEBUG")
 import logging
 logging.basicConfig(level=logging.INFO)
 
+from telemetry import init_telemetry
+init_telemetry("superactive-backend")
+
 from db import init_db
 from routes import all_routers
 
@@ -55,6 +58,9 @@ async def lifespan(app: FastAPI):
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(title="Superactive", version="4.0", lifespan=lifespan)
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+FastAPIInstrumentor.instrument_app(app)
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

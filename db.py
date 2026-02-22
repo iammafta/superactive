@@ -13,6 +13,10 @@ from typing import Optional
 
 import asyncpg
 from loguru import logger
+from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
+
+# Instrument AsyncPG globally
+AsyncPGInstrumentor().instrument()
 
 
 # Database connection configuration

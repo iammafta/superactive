@@ -60,7 +60,7 @@
 #### Proposed Architectural Changes
 - [x] **1. Database Migration:** Migrate from `aiosqlite` to PostgreSQL using `asyncpg`.
 - [x] **2. Resilient Message Queue (Campaign Dialer):** Replace in-memory `asyncio` loop with a durable worker queue (Redis + ARQ).
-- [ ] **3. Centralized Telemetry:** Implement OpenTelemetry or DataDog for pipeline frame lag, transcription latency, and STT failure rates instead of sequential DB logging.
+- [x] **3. Centralized Telemetry:** Implement OpenTelemetry natively mapped to Google Cloud Trace/Monitoring for pipeline frame lag, transcription latency, and STT failure rates instead of sequential DB logging.
 - [ ] **4. Robust WebSocket Sync:** Upgrade frontend/backend real-time sync to replace SWR polling for Live Monitor call takeover and active stats.
 
 #### Database & Redis Migration Status

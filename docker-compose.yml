@@ -7,6 +7,10 @@ services:
       - "8765:8765"
     env_file:
       - .env
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=superactive-backend
+      - OTEL_TRACES_EXPORTER=otlp
     volumes:
       - db-data:/app/data
     restart: unless-stopped
@@ -66,11 +70,14 @@ services:
       timeout: 5s
       retries: 5
 
+
   worker:
     build: .
     command: arq worker.WorkerSettings
     env_file:
       - .env
+    environment:
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=superactive-worker
     volumes:
       - db-data:/app/data
     restart: unless-stopped
