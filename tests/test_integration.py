@@ -182,6 +182,24 @@ class TestIntegrationCampaign:
         assert start_res.status_code == 200
         assert start_res.json()["status"] == "started"
         
+        # 4.5 Wait for worker to process queue
+        import time
+        print("Waiting 6s for background worker...")
+        time.sleep(6)
+        
+        # Check actual contact statuses via the existing /api/campaigns/{id} endpoint
+        campaign_check_res = auth_client.get(f"/api/campaigns/{campaign_id}")
+        assert campaign_check_res.status_code == 200
+        camp_data = campaign_check_res.json()
+        contacts = camp_data.get("contacts", [])
+        
+        assert len(contacts) == 2, f"Found {len(contacts)} contacts"
+        for c in contacts:
+            assert c["status"] == "called", f"Worker failed to process queue. Contact status left as {c.get('status')}"
+            assert c["call_sid"] and c["call_sid"].startswith("CA_mock_"), "Call SID not correctly assigned"
+        
+        print("Worker successfully executed dial tasks!")
+        
         # 5. Pause Campaign
         pause_res = auth_client.post(f"/api/campaigns/{campaign_id}/pause")
         assert pause_res.status_code == 200

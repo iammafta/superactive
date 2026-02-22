@@ -54,8 +54,8 @@ async def dial_contact_task(ctx, campaign_id: str, tenant_id: str, contact_index
     
     # 1. Load context
     campaign = await db_load_campaign(campaign_id, tenant_id)
-    if not campaign or campaign["status"] != "running":
-        logger.warning(f"Campaign {campaign_id} is not running. Canceling dial task.")
+    if not campaign or campaign["status"] != "active":
+        logger.warning(f"Campaign {campaign_id} is not active. Canceling dial task.")
         return False
         
     tenant = await db_get_tenant(tenant_id)
