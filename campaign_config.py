@@ -9,6 +9,7 @@ Persisted in SQLite via db.py.
 import json
 from datetime import datetime
 from typing import Optional
+import uuid
 
 from pydantic import BaseModel, Field
 from loguru import logger
@@ -36,8 +37,8 @@ class ContactRecord(BaseModel):
 class CampaignConfig(BaseModel):
     """Full campaign configuration."""
 
-    id: str
-    tenant_id: str
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    tenant_id: str = ""
     name: str
     agent_id: str
     status: str = "draft"  # draft | active | paused | completed

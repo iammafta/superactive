@@ -46,6 +46,9 @@ async def lifespan(app: FastAPI):
     pool = await get_pool()
     if pool:
         await pool.close()
+    
+    import db
+    db._pool = None
 
 
 # ── Rate Limiter ──────────────────────────────────────────────────────

@@ -26,9 +26,9 @@
 ---
 
 ### Phase 3: Testing ✅
-- [x] 38 tests passing: `test_auth.py` (10), `test_state_machine.py` (13), `test_tool_registry.py` (8)
+- [x] 49 tests passing: `test_auth.py` (12), `test_state_machine.py` (13), `test_tool_registry.py` (8), `test_jwt_cookie.py` (16)
 - [x] `test_db_postgres.py` — CRUD, tenant isolation (5 tests)
-- [ ] Integration tests: auth flow, agent CRUD, campaign lifecycle
+- [x] Integration tests: auth flow, agent CRUD, campaign lifecycle
 
 ---
 
