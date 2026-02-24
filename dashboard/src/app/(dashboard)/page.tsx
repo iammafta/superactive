@@ -153,6 +153,20 @@ export default function DashboardPage() {
 
     return (
         <div className="max-w-7xl mx-auto pb-12">
+            {/* Welcome Banner (Zero State) */}
+            {data.total_calls === 0 && (
+                <div className="mb-8 p-6 rounded-2xl bg-gradient-to-r from-blue-600/20 via-indigo-500/10 to-transparent border border-blue-500/20 flex flex-col sm:flex-row items-center justify-between gap-6">
+                    <div>
+                        <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                            <span className="text-2xl">👋</span> Welcome to Superactive!
+                        </h2>
+                        <p className="text-sm text-blue-200/70 max-w-2xl leading-relaxed">
+                            Your AI workforce is ready to go. To get started, create your first agent, run a test call to hear it in action, and then launch a campaign. Follow the Quick Start guide to the right.
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {/* Header Area */}
             <div className="flex justify-between items-end mb-8">
                 <div>

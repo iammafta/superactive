@@ -91,10 +91,10 @@
 - [x] Audit and remove unused CSS classes from `globals.css`
 - [x] Build validation: `npm run build` passed — 10/10 pages, 0 errors
 
-### Sprint 3: Onboarding & Empty States
-- [ ] Add empty state with CTA to agents, campaigns, calls pages
-- [ ] Add welcome banner on dashboard when 0 calls exist
-- [ ] Create "Quick Start" card: Create Agent → Test Call → Go Live
+### Sprint 3: Onboarding & Empty States (Completed)
+- [x] Add empty state with CTA to agents, campaigns, calls pages
+- [x] Add welcome banner on dashboard when 0 calls exist
+- [x] Create "Quick Start" card: Create Agent → Test Call → Go Live
 
 ### Sprint 4: Analytics Upgrade
 - [ ] Add time-series call volume chart using `calls_per_day` data (already in API)
