@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -68,9 +69,11 @@ export default function Sidebar() {
         <aside className="sidebar w-[240px] h-screen fixed top-0 left-0 flex flex-col py-6 px-4 z-50">
             {/* Logo */}
             <div className="flex items-center gap-2.5 mb-9 pl-2">
-                <img
+                <Image
                     src="/logo.png"
                     alt="Superactive"
+                    width={40}
+                    height={40}
                     className="w-auto h-10 object-contain"
                 />
                 <span className="text-lg font-bold tracking-tight">

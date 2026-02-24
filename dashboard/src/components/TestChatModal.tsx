@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { X, Send, User, Bot, Loader2, Sparkles, MessageSquare } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
+import Modal from "@/components/ui/Modal";
 
 export default function TestChatModal({
     isOpen,
@@ -25,6 +26,7 @@ export default function TestChatModal({
     // Reset messages when modal opens
     useEffect(() => {
         if (isOpen) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setMessages([
                 { role: "agent", text: "Hi! I'm the simulated chat version of your exact agent configuration. Note: The backend for pure text-simulation is still in development, but you can see how the UI looks right now!" }
             ]);
@@ -50,32 +52,8 @@ export default function TestChatModal({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="relative w-full max-w-lg bg-gray-900 border border-gray-700/50 rounded-2xl shadow-2xl shadow-blue-900/20 overflow-hidden flex flex-col"
-                style={{ height: "600px" }}
-            >
-                {/* Header */}
-                <div className="px-5 py-4 border-b border-gray-800 bg-gray-950/50 backdrop-blur-md flex justify-between items-center z-10">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 relative">
-                            <Bot className="w-5 h-5" />
-                            <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-gray-950 rounded-full" />
-                        </div>
-                        <div>
-                            <h2 className="text-white font-bold leading-tight">{agentName}</h2>
-                            <p className="text-xs text-blue-400 font-medium flex items-center gap-1">
-                                <Sparkles className="w-3 h-3" /> Chat Simulator Payload
-                            </p>
-                        </div>
-                    </div>
-                    <button onClick={onClose} className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors">
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-
+        <Modal isOpen={isOpen} onClose={onClose} title={`Chat Simulator: ${agentName}`} width="w-[600px]">
+            <div className="flex flex-col h-[500px]">
                 {/* Messages Area */}
                 <div className="flex-1 overflow-y-auto p-5 pb-8 space-y-6">
                     {messages.length === 0 && (
@@ -131,7 +109,7 @@ export default function TestChatModal({
                     </form>
                     <p className="text-center text-[10px] text-gray-600 font-mono tracking-tight mt-3">SUPERACTIVE LOGIC INFERENCE LAYER</p>
                 </div>
-            </motion.div>
-        </div>
+            </div>
+        </Modal>
     );
 }

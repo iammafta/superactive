@@ -34,8 +34,8 @@ export default function RegisterPage() {
 
             router.push("/");
             router.refresh();
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError((err as Error).message);
         } finally {
             setLoading(false);
         }

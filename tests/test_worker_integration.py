@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 os.environ["POSTGRES_DB"] = "superactive"
+os.environ["DISABLE_TELEMETRY"] = "1"
 
 def test_worker_end_to_end():
     print("Importing server...")
@@ -63,28 +64,36 @@ def test_worker_end_to_end():
         assert start_res.status_code == 200
 
         # Wait
-        print("Waiting 5 seconds for background worker to dial contacts...")
-        time.sleep(5)
+        print("Waiting 8 seconds for background worker to dial contacts...")
+        time.sleep(8)
             
         # 6. Verify database reflects the updates performed by the worker
         progress_res = client.get(f"/api/campaigns/{campaign_id}/progress")
         assert progress_res.status_code == 200
         progress = progress_res.json()
         
-        from db import db_get_contacts
-        # We need async event loop to call db_get_contacts
-        async def verify_contacts():
-            contacts = await db_get_contacts(campaign_id)
-            assert len(contacts) == 2
-            for contact in contacts:
-                assert contact["status"] == "called", f"Expected 'called', got {contact['status']}"
-                assert contact["call_sid"] is not None
-                assert contact["call_sid"].startswith("CA_mock_")
-            print("========================================")
-            print("Worker end-to-end verification successful!")
-            print("========================================")
-            
-        asyncio.run(verify_contacts())
+    from db import db_get_contacts
+    import db
+    # We need async event loop to call db_get_contacts
+    async def verify_contacts():
+        contacts = await db_get_contacts(campaign_id)
+        assert len(contacts) == 2
+        for contact in contacts:
+            assert contact["status"] == "called", f"Expected 'called', got {contact['status']}"
+            assert contact["call_sid"] is not None
+            assert contact["call_sid"].startswith("CA_mock_")
+        print("========================================")
+        print("Worker end-to-end verification successful!")
+        print("========================================")
+        
+        # Cleanly close the pool created on this temporary event loop
+        if db._pool:
+            await db._pool.close()
+            db._pool = None
+        
+    db._pool = None
+    asyncio.run(verify_contacts())
+    db._pool = None
 
 if __name__ == "__main__":
     test_worker_end_to_end()

@@ -16,6 +16,7 @@ import {
     BookOpen,
     ExternalLink
 } from "lucide-react";
+import Link from "next/link";
 import { API_BASE_URL, fetcher } from "@/lib/api";
 import type { AnalyticsData } from "@/lib/types";
 
@@ -25,7 +26,7 @@ function formatDuration(seconds: number): string {
     return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-const TYPE_ICONS: Record<string, any> = {
+const TYPE_ICONS: Record<string, React.ElementType> = {
     insurance: Shield,
     medical: Stethoscope,
     restaurant: Utensils,
@@ -41,7 +42,7 @@ function MetricCard({
     label: string;
     value: string;
     change?: string;
-    Icon: any;
+    Icon: React.ElementType;
     color?: string;
 }) {
     const textColors: Record<string, string> = {
@@ -284,9 +285,9 @@ export default function DashboardPage() {
                                 Launch a campaign
                             </li>
                         </ul>
-                        <a href="/agents/new" className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-colors no-underline">
+                        <Link href="/agents/new" className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-colors no-underline">
                             Create Your First Agent
-                        </a>
+                        </Link>
                     </div>
 
                     {/* Documentation Link */}

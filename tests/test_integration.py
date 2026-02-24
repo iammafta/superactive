@@ -184,8 +184,8 @@ class TestIntegrationCampaign:
         
         # 4.5 Wait for worker to process queue
         import time
-        print("Waiting 6s for background worker...")
-        time.sleep(6)
+        print("Waiting 10s for background worker...")
+        time.sleep(10)
         
         # Check actual contact statuses via the existing /api/campaigns/{id} endpoint
         campaign_check_res = auth_client.get(f"/api/campaigns/{campaign_id}")

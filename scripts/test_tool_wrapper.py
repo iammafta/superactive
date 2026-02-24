@@ -1,4 +1,5 @@
 import asyncio
+import pytest
 from unittest.mock import MagicMock
 from loguru import logger
 
@@ -13,6 +14,7 @@ class FunctionCallParams:
         self.result_callback = result_callback
 
 # Re-implementing the wrapper logic to test it in isolation
+@pytest.mark.asyncio
 async def test_wrapper_logic():
     print("🧪 Testing wrapper reconstruction logic...")
     

@@ -2,17 +2,20 @@
 import asyncio
 import os
 import sys
+import pytest
+
 sys.path.append(os.getcwd())
 
 from tool_registry import get_tools_for_agent
 from agent_config import load_agent
 from pipecat.services.google.llm_vertex import GoogleVertexLLMService
 
+@pytest.mark.asyncio
 async def test_llm_tool_selection():
     print("--- Testing LLM Tool Selection ---")
     
     # Load Agent
-    agent = load_agent("debug_chat")
+    agent = await load_agent("debug_chat")
     if not agent:
         print("ERROR: debug_chat agent not found")
         return

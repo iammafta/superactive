@@ -18,12 +18,13 @@ import {
     ArrowUpDown,
     ArrowUp,
     ArrowDown,
-    Gift
 } from "lucide-react";
 import { API_BASE_URL, fetcher } from "@/lib/api";
 import type { CallRecord } from "@/lib/types";
+import PageHeader from "@/components/ui/PageHeader";
+import EmptyState from "@/components/ui/EmptyState";
 
-const TYPE_ICONS: Record<string, any> = {
+const TYPE_ICONS: Record<string, React.ElementType> = {
     insurance: Shield,
     medical: Stethoscope,
     restaurant: Utensils,
@@ -40,7 +41,7 @@ function formatDate(isoString: string): string {
     return new Date(isoString).toLocaleString();
 }
 
-const OUTCOME_STYLES: Record<string, { color: string; bg: string; border: string; icon: any }> = {
+const OUTCOME_STYLES: Record<string, { color: string; bg: string; border: string; icon: React.ElementType }> = {
     booked: { color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20", icon: CheckCircle },
     transferred: { color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20", icon: ArrowRightCircle },
     completed: { color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", icon: CheckCircle },
@@ -50,6 +51,13 @@ const OUTCOME_STYLES: Record<string, { color: string; bg: string; border: string
 
 type SortKey = "started_at" | "agent_id" | "duration_seconds" | "outcome" | "total_turns";
 type SortDir = "asc" | "desc";
+
+const SortIcon = ({ column, sortKey, sortDir }: { column: SortKey, sortKey: SortKey, sortDir: SortDir }) => {
+    if (sortKey !== column) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
+    return sortDir === "asc"
+        ? <ArrowUp className="w-3 h-3 text-blue-400" />
+        : <ArrowDown className="w-3 h-3 text-blue-400" />;
+};
 
 export default function CallsPage() {
     const { data: calls, error } = useSWR<CallRecord[]>(
@@ -72,12 +80,7 @@ export default function CallsPage() {
         }
     };
 
-    const SortIcon = ({ column }: { column: SortKey }) => {
-        if (sortKey !== column) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
-        return sortDir === "asc"
-            ? <ArrowUp className="w-3 h-3 text-blue-400" />
-            : <ArrowDown className="w-3 h-3 text-blue-400" />;
-    };
+    // removed SortIcon from inside CallsPage to fix react-hooks/static-components
 
     // Filter + search + sort
     const processedCalls = useMemo(() => {
@@ -139,40 +142,38 @@ export default function CallsPage() {
             {/* Left: List */}
             <div className="flex-1 flex flex-col min-w-0">
                 {/* Controls */}
-                <div className="flex justify-between items-center mb-6">
-                    <div>
-                        <h1 className="text-2xl font-bold mb-1 text-white">Call History</h1>
-                        <p className="text-sm text-gray-400">
-                            {processedCalls.length} of {calls.length} calls
-                        </p>
-                    </div>
-                    <div className="flex gap-3">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                            <input
-                                type="text"
-                                placeholder="Search agents..."
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                className="pl-9 pr-4 py-2 bg-black/20 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
-                            />
+                <PageHeader
+                    title="Call History"
+                    description={`${processedCalls.length} of ${calls.length} calls`}
+                    action={
+                        <div className="flex gap-3">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                                <input
+                                    type="text"
+                                    placeholder="Search agents..."
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="pl-9 pr-4 py-2 bg-black/20 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
+                                />
+                            </div>
+                            <div className="relative">
+                                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                                <select
+                                    value={filter}
+                                    onChange={(e) => setFilter(e.target.value)}
+                                    className="pl-9 pr-8 py-2 bg-black/20 border border-white/10 rounded-lg text-sm text-white appearance-none focus:outline-none focus:border-blue-500 cursor-pointer"
+                                >
+                                    <option value="all">All Outcomes</option>
+                                    <option value="booked">Booked</option>
+                                    <option value="transferred">Transferred</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="hung_up">Hung Up</option>
+                                </select>
+                            </div>
                         </div>
-                        <div className="relative">
-                            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                            <select
-                                value={filter}
-                                onChange={(e) => setFilter(e.target.value)}
-                                className="pl-9 pr-8 py-2 bg-black/20 border border-white/10 rounded-lg text-sm text-white appearance-none focus:outline-none focus:border-blue-500 cursor-pointer"
-                            >
-                                <option value="all">All Outcomes</option>
-                                <option value="booked">Booked</option>
-                                <option value="transferred">Transferred</option>
-                                <option value="completed">Completed</option>
-                                <option value="hung_up">Hung Up</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
+                    }
+                />
 
                 {/* Table */}
                 <div className="glass-card flex-1 overflow-hidden flex flex-col">
@@ -185,7 +186,7 @@ export default function CallsPage() {
                                         onClick={() => handleSort("agent_id")}
                                     >
                                         <span className="flex items-center gap-1.5">
-                                            Agent <SortIcon column="agent_id" />
+                                            Agent <SortIcon column="agent_id" sortKey={sortKey} sortDir={sortDir} />
                                         </span>
                                     </th>
                                     <th
@@ -193,7 +194,7 @@ export default function CallsPage() {
                                         onClick={() => handleSort("started_at")}
                                     >
                                         <span className="flex items-center gap-1.5">
-                                            Time <SortIcon column="started_at" />
+                                            Time <SortIcon column="started_at" sortKey={sortKey} sortDir={sortDir} />
                                         </span>
                                     </th>
                                     <th
@@ -201,7 +202,7 @@ export default function CallsPage() {
                                         onClick={() => handleSort("duration_seconds")}
                                     >
                                         <span className="flex items-center gap-1.5">
-                                            Duration <SortIcon column="duration_seconds" />
+                                            Duration <SortIcon column="duration_seconds" sortKey={sortKey} sortDir={sortDir} />
                                         </span>
                                     </th>
                                     <th
@@ -209,7 +210,7 @@ export default function CallsPage() {
                                         onClick={() => handleSort("outcome")}
                                     >
                                         <span className="flex items-center gap-1.5">
-                                            Outcome <SortIcon column="outcome" />
+                                            Outcome <SortIcon column="outcome" sortKey={sortKey} sortDir={sortDir} />
                                         </span>
                                     </th>
                                     <th
@@ -217,7 +218,7 @@ export default function CallsPage() {
                                         onClick={() => handleSort("total_turns")}
                                     >
                                         <span className="flex items-center gap-1.5 justify-end">
-                                            Turns <SortIcon column="total_turns" />
+                                            Turns <SortIcon column="total_turns" sortKey={sortKey} sortDir={sortDir} />
                                         </span>
                                     </th>
                                 </tr>
@@ -311,10 +312,11 @@ export default function CallsPage() {
                                     </div>
                                 ))
                             ) : (
-                                <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-2">
-                                    <MessageSquare className="w-8 h-8 opacity-20" />
-                                    <p className="text-sm">No transcript available</p>
-                                </div>
+                                <EmptyState
+                                    icon={MessageSquare}
+                                    title="No Transcript"
+                                    description="This call has no recorded dialogue."
+                                />
                             )}
                         </div>
                     </div>

@@ -140,11 +140,8 @@ class TestCookieAuth:
         })
         assert login_res.status_code == 200
 
-        # Extract cookie from response
-        cookie_jar = login_res.cookies
-
         # Call /api/auth/me with the cookie (no Authorization header)
-        me_res = client.get("/api/auth/me", cookies=cookie_jar)
+        me_res = client.get("/api/auth/me")
         assert me_res.status_code == 200
         data = me_res.json()
         assert data["email"] == "test@test.com"
@@ -171,14 +168,13 @@ class TestLogout:
 
     def test_logout_clears_cookie(self, client):
         # Login first
-        login_res = client.post("/api/auth/login", json={
+        client.post("/api/auth/login", json={
             "email": "test@test.com",
             "password": MOCK_PASSWORD,
         })
-        cookie_jar = login_res.cookies
 
         # Logout
-        logout_res = client.post("/api/auth/logout", cookies=cookie_jar)
+        logout_res = client.post("/api/auth/logout")
         assert logout_res.status_code == 200
         assert logout_res.json() == {"ok": True}
 
@@ -193,15 +189,16 @@ class TestWebSocketTicket:
     """POST /api/auth/ticket should generate a short-lived WS ticket."""
 
     def test_get_ticket_with_cookie(self, client):
+        client.cookies.clear()
         # Login
         login_res = client.post("/api/auth/login", json={
             "email": "test@test.com",
             "password": MOCK_PASSWORD,
         })
-        cookie_jar = login_res.cookies
+        client.cookies = login_res.cookies
 
         # Get ticket
-        res = client.post("/api/auth/ticket", cookies=cookie_jar)
+        res = client.post("/api/auth/ticket")
         assert res.status_code == 200
         data = res.json()
         assert "ticket" in data
@@ -215,15 +212,16 @@ class TestWebSocketTicket:
         assert res.status_code == 401
         
     def test_websocket_connects_with_ticket(self, client):
+        client.cookies.clear()
         # 1. Login
         login_res = client.post("/api/auth/login", json={
             "email": "test@test.com",
             "password": MOCK_PASSWORD,
         })
-        cookie_jar = login_res.cookies
+        client.cookies = login_res.cookies
 
         # 2. Get ticket
-        res = client.post("/api/auth/ticket", cookies=cookie_jar)
+        res = client.post("/api/auth/ticket")
         ticket = res.json()["ticket"]
 
         # 3. Connect to WS with ticket

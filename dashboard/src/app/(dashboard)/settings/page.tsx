@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { Save, RotateCcw, Loader2, CheckCircle, Phone, Globe, Cloud } from "lucide-react";
 import { toast } from "sonner";
 import { API_BASE_URL, fetcher, saveSettings } from "@/lib/api";
+import PageHeader from "@/components/ui/PageHeader";
 
 interface Settings {
     // Editable
@@ -56,8 +57,8 @@ export default function SettingsPage() {
             setSaved(true);
             toast.success("Settings saved successfully!");
             setTimeout(() => setSaved(false), 3000);
-        } catch (err: any) {
-            toast.error(`Failed to save settings: ${err.message}`);
+        } catch (err: unknown) {
+            toast.error(`Failed to save settings: ${(err as Error).message}`);
         } finally {
             setSaving(false);
         }
@@ -81,10 +82,10 @@ export default function SettingsPage() {
 
     return (
         <div className="max-w-[700px] mx-auto">
-            <div className="mb-7">
-                <h1 className="text-2xl font-bold mb-1">Settings</h1>
-                <p className="text-sm text-[var(--text-muted)]">Platform configuration and integrations</p>
-            </div>
+            <PageHeader
+                title="Settings"
+                description="Platform configuration and integrations"
+            />
 
             {/* Account — Editable */}
             <div className="glass-card p-6 mb-5">

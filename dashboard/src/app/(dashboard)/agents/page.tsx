@@ -19,6 +19,7 @@ import {
 import { API_BASE_URL, fetcher } from "@/lib/api";
 import type { AgentConfig } from "@/lib/types";
 import TestCallModal from "@/components/TestCallModal";
+import PageHeader from "@/components/ui/PageHeader";
 
 const TYPE_ICONS: Record<string, typeof Bot> = {
     insurance: Shield,
@@ -51,19 +52,17 @@ export default function AgentsPage() {
     return (
         <div>
             {/* Header */}
-            <div className="flex justify-between items-center mb-7">
-                <div>
-                    <h1 className="text-2xl font-bold mb-1">Agents</h1>
-                    <p className="text-sm text-gray-400">
-                        Configure and manage your AI voice agents
-                    </p>
-                </div>
-                <Link href="/agents/new">
-                    <button className="btn-primary flex items-center gap-2">
-                        <Plus className="w-5 h-5" /> New Agent
-                    </button>
-                </Link>
-            </div>
+            <PageHeader
+                title="Agents"
+                description="Configure and manage your AI voice agents"
+                action={
+                    <Link href="/agents/new">
+                        <button className="btn-primary flex items-center gap-2">
+                            <Plus className="w-5 h-5" /> New Agent
+                        </button>
+                    </Link>
+                }
+            />
 
             {/* Agent Cards */}
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">

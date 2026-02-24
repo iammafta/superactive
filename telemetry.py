@@ -15,6 +15,8 @@ from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
 def init_telemetry(service_name: str):
     """Initialize OpenTelemetry Tracer and Meter providers globally."""
+    if os.getenv("DISABLE_TELEMETRY") == "1":
+        return
     resource = Resource.create({"service.name": service_name})
     
     # 1. Traces

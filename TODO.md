@@ -67,7 +67,7 @@
 - [x] **Step 1: Local Setup:** Multi-container docker-compose up running Postgres and Redis.
 - [x] **Step 2: Database Refactor:** Asyncpg pools, parameterized queries, JSONB column types.
 - [x] **Step 3: Worker Queue:** ARQ worker (`worker.py`) routing background tasks.
-- [ ] **Step 4: End-to-End Verification:** Upload CSV, Start Campaign, observe concurrent Postgres updates and worker stability.
+- [x] **Step 4: End-to-End Verification:** Upload CSV, Start Campaign, observe concurrent Postgres updates and worker stability.
 
 ---
 ---
@@ -83,12 +83,12 @@
 - [x] Replace all emoji icons with Lucide React icons (Sidebar, settings, campaigns, monitor)
 - [x] Build validation: `npm run build` passed — all 10 pages compiled, 0 TypeScript errors
 
-### Sprint 2: Styling Unification (In Progress)
+### Sprint 2: Styling Unification (Completed)
 - [x] Convert campaigns page from inline styles → Tailwind (+ Lucide icons for Play/Pause/Plus/Upload/etc)
 - [x] Convert settings page from inline styles → Tailwind (+ Lucide Phone/Globe/Cloud replacing emojis, removed 'Configured via .env')
 - [x] Convert Sidebar from inline styles → Tailwind
-- [ ] Extract reusable components: `<Modal>`, `<PageHeader>`, `<EmptyState>`
-- [ ] Audit and remove unused CSS classes from `globals.css`
+- [x] Extract reusable components: `<Modal>`, `<PageHeader>`, `<EmptyState>`
+- [x] Audit and remove unused CSS classes from `globals.css`
 - [x] Build validation: `npm run build` passed — 10/10 pages, 0 errors
 
 ### Sprint 3: Onboarding & Empty States

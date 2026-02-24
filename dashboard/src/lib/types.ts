@@ -64,7 +64,7 @@ export interface CampaignConfig {
     called: number;
     booked: number;
     failed: number;
-    schedule: Record<string, any> | null;
+    schedule: Record<string, unknown> | null;
     created_at: string;
     updated_at: string;
 }

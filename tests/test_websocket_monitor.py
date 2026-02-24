@@ -6,18 +6,21 @@ from fastapi.websockets import WebSocketDisconnect
 from fastapi.testclient import TestClient
 
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
 # Mock telemetry BEFORE importing server to prevent GCP 403 errors during testing
 sys.modules['telemetry'] = MagicMock()
-
-import auth
-auth.verify_ws_ticket = MagicMock(side_effect=lambda token: "test_tenant" if token == "valid_dummy_ticket" else None)
 
 from server import app
 from live_monitor import live_monitor
 from call_logger import call_logger, CallLog
 
 client = TestClient(app)
+
+@pytest.fixture(autouse=True)
+def mock_ws_auth():
+    with patch("routes.monitor.verify_ws_ticket", side_effect=lambda token: "test_tenant" if token == "valid_dummy_ticket" else None):
+        yield
 
 @pytest.fixture
 def valid_ws_token():
@@ -80,8 +83,11 @@ def test_ws_broadcast_frustration(valid_ws_token):
         # Test emitting an event via live_monitor singleton globally
         test_data = {"reason": "user swore"}
         # Must run in new event loop since we are in sync test
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(live_monitor.broadcast_event("frustration", test_data, tenant_id="test_tenant"))
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(live_monitor.broadcast_event("frustration", test_data, tenant_id="test_tenant"))
+        finally:
+            loop.close()
         
         data = websocket.receive_json()
         assert data["type"] == "frustration"

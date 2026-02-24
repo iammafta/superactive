@@ -13,6 +13,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 load_dotenv()
 
+# Prevent OpenTelemetry from attempting to export to Google Cloud during tests
+os.environ["DISABLE_TELEMETRY"] = "1"
+
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -20,6 +23,14 @@ def event_loop():
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
+
+@pytest.fixture(autouse=True)
+def reset_db_pool():
+    """Ensure db._pool is reset for each test to avoid event loop conflicts."""
+    import db
+    db._pool = None
+    yield
+    db._pool = None
 
 
 @pytest.fixture

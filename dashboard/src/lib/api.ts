@@ -46,12 +46,12 @@ async function mutate(url: string, method: string, body?: unknown) {
             if (err.detail) {
                 // FastAPI 422 validation errors are arrays
                 if (Array.isArray(err.detail)) {
-                    errMessage = err.detail.map((e: any) => `${e.loc.join('.')}: ${e.msg}`).join(', ');
+                    errMessage = err.detail.map((e: { loc: string[]; msg: string }) => `${e.loc.join('.')}: ${e.msg}`).join(', ');
                 } else {
                     errMessage = String(err.detail);
                 }
             }
-        } catch (e) {
+        } catch {
             // keep standard failure
         }
         throw new Error(errMessage);

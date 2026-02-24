@@ -1,0 +1,235 @@
+
+> dashboard@0.1.0 lint
+> eslint
+
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(auth)/login/page.tsx
+   39:23  error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  112:24  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(auth)/register/page.tsx
+  37:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/agents/[id]/page.tsx
+    3:31   warning  'useRef' is defined but never used        @typescript-eslint/no-unused-vars
+    8:55   warning  'PlayCircle' is defined but never used    @typescript-eslint/no-unused-vars
+    8:67   warning  'Maximize2' is defined but never used     @typescript-eslint/no-unused-vars
+  106:80   warning  '_' is defined but never used             @typescript-eslint/no-unused-vars
+  420:23   error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  490:131  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/calls/page.tsx
+   21:5   warning  'Gift' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 @typescript-eslint/no-unused-vars
+   26:34  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   43:89  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  188:52  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/calls/page.tsx:188:52
+  186 |                                     >
+  187 |                                         <span className="flex items-center gap-1.5">
+> 188 |                                             Agent <SortIcon column="agent_id" />
+      |                                                    ^^^^^^^^ This component is created during render
+  189 |                                         </span>
+  190 |                                     </th>
+  191 |                                     <th
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/calls/page.tsx:75:22
+  73 |     };
+  74 |
+> 75 |     const SortIcon = ({ column }: { column: SortKey }) => {
+     |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 76 |         if (sortKey !== column) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 77 |         return sortDir === "asc"
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 78 |             ? <ArrowUp className="w-3 h-3 text-blue-400" />
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 79 |             : <ArrowDown className="w-3 h-3 text-blue-400" />;
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 80 |     };
+     | ^^^^^^ The component is created during render here
+  81 |
+  82 |     // Filter + search + sort
+  83 |     const processedCalls = useMemo(() => {                react-hooks/static-components
+  196:51  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/calls/page.tsx:196:51
+  194 |                                     >
+  195 |                                         <span className="flex items-center gap-1.5">
+> 196 |                                             Time <SortIcon column="started_at" />
+      |                                                   ^^^^^^^^ This component is created during render
+  197 |                                         </span>
+  198 |                                     </th>
+  199 |                                     <th
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/calls/page.tsx:75:22
+  73 |     };
+  74 |
+> 75 |     const SortIcon = ({ column }: { column: SortKey }) => {
+     |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 76 |         if (sortKey !== column) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 77 |         return sortDir === "asc"
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 78 |             ? <ArrowUp className="w-3 h-3 text-blue-400" />
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 79 |             : <ArrowDown className="w-3 h-3 text-blue-400" />;
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 80 |     };
+     | ^^^^^^ The component is created during render here
+  81 |
+  82 |     // Filter + search + sort
+  83 |     const processedCalls = useMemo(() => {                react-hooks/static-components
+  204:55  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/calls/page.tsx:204:55
+  202 |                                     >
+  203 |                                         <span className="flex items-center gap-1.5">
+> 204 |                                             Duration <SortIcon column="duration_seconds" />
+      |                                                       ^^^^^^^^ This component is created during render
+  205 |                                         </span>
+  206 |                                     </th>
+  207 |                                     <th
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/calls/page.tsx:75:22
+  73 |     };
+  74 |
+> 75 |     const SortIcon = ({ column }: { column: SortKey }) => {
+     |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 76 |         if (sortKey !== column) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 77 |         return sortDir === "asc"
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 78 |             ? <ArrowUp className="w-3 h-3 text-blue-400" />
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 79 |             : <ArrowDown className="w-3 h-3 text-blue-400" />;
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 80 |     };
+     | ^^^^^^ The component is created during render here
+  81 |
+  82 |     // Filter + search + sort
+  83 |     const processedCalls = useMemo(() => {  react-hooks/static-components
+  212:54  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/calls/page.tsx:212:54
+  210 |                                     >
+  211 |                                         <span className="flex items-center gap-1.5">
+> 212 |                                             Outcome <SortIcon column="outcome" />
+      |                                                      ^^^^^^^^ This component is created during render
+  213 |                                         </span>
+  214 |                                     </th>
+  215 |                                     <th
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/calls/page.tsx:75:22
+  73 |     };
+  74 |
+> 75 |     const SortIcon = ({ column }: { column: SortKey }) => {
+     |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 76 |         if (sortKey !== column) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 77 |         return sortDir === "asc"
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 78 |             ? <ArrowUp className="w-3 h-3 text-blue-400" />
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 79 |             : <ArrowDown className="w-3 h-3 text-blue-400" />;
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 80 |     };
+     | ^^^^^^ The component is created during render here
+  81 |
+  82 |     // Filter + search + sort
+  83 |     const processedCalls = useMemo(() => {             react-hooks/static-components
+  220:52  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/calls/page.tsx:220:52
+  218 |                                     >
+  219 |                                         <span className="flex items-center gap-1.5 justify-end">
+> 220 |                                             Turns <SortIcon column="total_turns" />
+      |                                                    ^^^^^^^^ This component is created during render
+  221 |                                         </span>
+  222 |                                     </th>
+  223 |                                 </tr>
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/calls/page.tsx:75:22
+  73 |     };
+  74 |
+> 75 |     const SortIcon = ({ column }: { column: SortKey }) => {
+     |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 76 |         if (sortKey !== column) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 77 |         return sortDir === "asc"
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 78 |             ? <ArrowUp className="w-3 h-3 text-blue-400" />
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 79 |             : <ArrowDown className="w-3 h-3 text-blue-400" />;
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 80 |     };
+     | ^^^^^^ The component is created during render here
+  81 |
+  82 |     // Filter + search + sort
+  83 |     const processedCalls = useMemo(() => {   react-hooks/static-components
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/campaigns/page.tsx
+   75:23   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   84:109  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   89:108  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   94:110  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  100:110  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  105:107  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/page.tsx
+   28:34  error  Unexpected any. Specify a different type                                                                                                                          @typescript-eslint/no-explicit-any
+   44:11  error  Unexpected any. Specify a different type                                                                                                                          @typescript-eslint/no-explicit-any
+  287:25  error  Do not use an `<a>` element to navigate to `/agents/new/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages  @next/next/no-html-link-for-pages
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/(dashboard)/settings/page.tsx
+  59:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/app/layout.tsx
+  17:17  warning  Custom fonts not added in `pages/_document.js` will only load for a single page. This is discouraged. See: https://nextjs.org/docs/messages/no-page-custom-font  @next/next/no-page-custom-font
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/components/Sidebar.tsx
+  71:17  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/components/TestCallModal.tsx
+  30:23  error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  63:43  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+  63:56  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/components/TestChatModal.tsx
+   3:18  warning  'AnimatePresence' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              @typescript-eslint/no-unused-vars
+  28:13  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/components/TestChatModal.tsx:28:13
+  26 |     useEffect(() => {
+  27 |         if (isOpen) {
+> 28 |             setMessages([
+     |             ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  29 |                 { role: "agent", text: "Hi! I'm the simulated chat version of your exact agent configuration. Note: The backend for pure text-simulation is still in development, but you can see how the UI looks right now!" }
+  30 |             ]);
+  31 |         }  react-hooks/set-state-in-effect
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/lib/api.ts
+  49:53  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  54:18  warning  'e' is defined but never used             @typescript-eslint/no-unused-vars
+
+/Users/maftaalif/Documents/Superactive/dashboard/src/lib/types.ts
+  67:30  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+✖ 37 problems (28 errors, 9 warnings)
+

@@ -36,8 +36,8 @@ export default function LoginPage() {
 
             router.push("/");
             router.refresh();
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError((err as Error).message);
         } finally {
             setLoading(false);
         }
@@ -109,7 +109,7 @@ export default function LoginPage() {
                 </form>
 
                 <div className="mt-8 text-center text-sm font-medium text-gray-500">
-                    Don't have an account?{" "}
+                    Don&apos;t have an account?{" "}
                     <button
                         onClick={() => router.push("/register")}
                         className="text-black hover:underline"

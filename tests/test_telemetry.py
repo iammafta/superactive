@@ -11,35 +11,45 @@ from opentelemetry import metrics, trace
 from routes.telephony import TelemetryFrameProcessor, stt_latency_histogram, pipeline_lag_histogram, stt_failure_counter
 from pipecat.processors.frame_processor import FrameDirection
 
-@pytest.fixture
+@pytest.fixture(scope="session", autouse=True)
 def otel_setup():
-    """Setup InMemory exporters for testing OpenTelemetry metrics and traces."""
-    # Setup Metrics
+    """Setup InMemory exporters for testing OpenTelemetry metrics and traces once."""
     metric_reader = InMemoryMetricReader()
     meter_provider = MeterProvider(metric_readers=[metric_reader])
-    metrics.set_meter_provider(meter_provider)
+    
+    try:
+        metrics.set_meter_provider(meter_provider)
+    except Exception:
+        pass  # Ignore if it was somehow already set
 
     # Re-bind the module-level instruments for testing to the new provider
-    global meter
-    meter = metrics.get_meter("superactive.pipecat.test")
+    import routes.telephony
+    routes.telephony.meter = metrics.get_meter("superactive.pipecat.test")
 
     # Setup Traces
     tracer_provider = TracerProvider()
     span_exporter = InMemorySpanExporter()
     tracer_provider.add_span_processor(SimpleSpanProcessor(span_exporter))
-    trace.set_tracer_provider(tracer_provider)
-    
+    try:
+        trace.set_tracer_provider(tracer_provider)
+    except Exception:
+        pass
+
     yield metric_reader, span_exporter
-    
-    # Teardown
-    metrics._METER_PROVIDER = None
-    trace._TRACER_PROVIDER = None
+
+@pytest.fixture(autouse=True)
+def otel_clear_metrics(otel_setup):
+    """Clear memory exporters between test functions."""
+    metric_reader, span_exporter = otel_setup
+    span_exporter.clear()
+    # Metrics don't have a simple clear(), but we can force flush to clear delta state or just ignore stale ones.
+    yield metric_reader, span_exporter
 
 
 @pytest.mark.asyncio
-async def test_stt_latency_metric(otel_setup):
+async def test_stt_latency_metric(otel_clear_metrics):
     """Verify that TelemetryFrameProcessor records STT latency when a TranscriptionFrame follows an AudioRawFrame."""
-    metric_reader, _ = otel_setup
+    metric_reader, _ = otel_clear_metrics
     
     processor = TelemetryFrameProcessor()
     
@@ -87,9 +97,9 @@ async def test_stt_latency_metric(otel_setup):
 
 
 @pytest.mark.asyncio
-async def test_stt_failure_metric_and_trace(otel_setup):
+async def test_stt_failure_metric_and_trace(otel_clear_metrics):
     """Verify that STT Error frames increment the failure counter and create a trace span."""
-    metric_reader, span_exporter = otel_setup
+    metric_reader, span_exporter = otel_clear_metrics
     
     processor = TelemetryFrameProcessor()
     

@@ -10,6 +10,8 @@ import {
     startCampaign, pauseCampaign, resumeCampaign, deleteCampaign, resetCampaign
 } from "@/lib/api";
 import type { CampaignConfig } from "@/lib/types";
+import PageHeader from "@/components/ui/PageHeader";
+import Modal from "@/components/ui/Modal";
 
 type Campaign = CampaignConfig;
 
@@ -72,8 +74,8 @@ export default function CampaignsPage() {
             setContactFile(null);
             mutateCampaigns();
             toast.success("Campaign created successfully!");
-        } catch (err: any) {
-            toast.error(`Failed to create campaign: ${err.message}`);
+        } catch (err: unknown) {
+            toast.error(`Failed to create campaign: ${(err as Error).message}`);
         } finally {
             setIsCreating(false);
         }
@@ -81,28 +83,28 @@ export default function CampaignsPage() {
 
     const handleStart = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        try { await startCampaign(id); mutateCampaigns(); toast.success("Campaign started!"); } catch (err: any) { toast.error(`Failed to start: ${err.message}`); }
+        try { await startCampaign(id); mutateCampaigns(); toast.success("Campaign started!"); } catch (err: unknown) { toast.error(`Failed to start: ${(err as Error).message}`); }
     };
 
     const handlePause = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        try { await pauseCampaign(id); mutateCampaigns(); toast.success("Campaign paused."); } catch (err: any) { toast.error(`Failed to pause: ${err.message}`); }
+        try { await pauseCampaign(id); mutateCampaigns(); toast.success("Campaign paused."); } catch (err: unknown) { toast.error(`Failed to pause: ${(err as Error).message}`); }
     };
 
     const handleResume = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        try { await resumeCampaign(id); mutateCampaigns(); toast.success("Campaign resumed!"); } catch (err: any) { toast.error(`Failed to resume: ${err.message}`); }
+        try { await resumeCampaign(id); mutateCampaigns(); toast.success("Campaign resumed!"); } catch (err: unknown) { toast.error(`Failed to resume: ${(err as Error).message}`); }
     };
 
     const handleDelete = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
         if (!confirm("Are you sure you want to delete this campaign?")) return;
-        try { await deleteCampaign(id); mutateCampaigns(); toast.success("Campaign deleted."); } catch (err: any) { toast.error(`Failed to delete: ${err.message}`); }
+        try { await deleteCampaign(id); mutateCampaigns(); toast.success("Campaign deleted."); } catch (err: unknown) { toast.error(`Failed to delete: ${(err as Error).message}`); }
     };
 
     const handleReset = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        try { await resetCampaign(id); mutateCampaigns(); toast.success("Campaign reset."); } catch (err: any) { toast.error(`Failed to reset: ${err.message}`); }
+        try { await resetCampaign(id); mutateCampaigns(); toast.success("Campaign reset."); } catch (err: unknown) { toast.error(`Failed to reset: ${(err as Error).message}`); }
     };
 
     const isLoading = !campaigns && !campaignsError;
@@ -110,17 +112,15 @@ export default function CampaignsPage() {
     return (
         <div>
             {/* Header */}
-            <div className="flex justify-between items-center mb-7">
-                <div>
-                    <h1 className="text-2xl font-bold mb-1">Campaigns</h1>
-                    <p className="text-sm text-[var(--text-muted)]">
-                        Outbound calling campaigns — your AI makes the calls
-                    </p>
-                </div>
-                <button className="btn-primary flex items-center gap-2" onClick={() => setShowNewCampaign(true)}>
-                    <Plus className="w-5 h-5" /> New Campaign
-                </button>
-            </div>
+            <PageHeader
+                title="Campaigns"
+                description="Outbound calling campaigns — your AI makes the calls"
+                action={
+                    <button className="btn-primary flex items-center gap-2" onClick={() => setShowNewCampaign(true)}>
+                        <Plus className="w-5 h-5" /> New Campaign
+                    </button>
+                }
+            />
 
             {/* Loading / Error States */}
             {isLoading && <div className="p-5 text-[var(--text-muted)]">Loading campaigns...</div>}
@@ -226,72 +226,68 @@ export default function CampaignsPage() {
             </div>
 
             {/* New Campaign Modal */}
-            {showNewCampaign && (
-                <div
-                    className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100]"
-                    onClick={() => setShowNewCampaign(false)}
-                >
-                    <div className="glass-card p-8 w-[500px]" onClick={(e) => e.stopPropagation()}>
-                        <h2 className="text-xl font-bold mb-5">New Campaign</h2>
+            <Modal
+                isOpen={showNewCampaign}
+                onClose={() => setShowNewCampaign(false)}
+                title="New Campaign"
+                width="w-[500px]"
+            >
+                <div className="flex flex-col gap-4">
+                    <div>
+                        <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Campaign Name</label>
+                        <input
+                            className="input"
+                            placeholder="e.g. Q1 Renewal Outreach"
+                            value={newCampaignName}
+                            onChange={(e) => setNewCampaignName(e.target.value)}
+                        />
+                    </div>
 
-                        <div className="flex flex-col gap-4">
-                            <div>
-                                <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Campaign Name</label>
-                                <input
-                                    className="input"
-                                    placeholder="e.g. Q1 Renewal Outreach"
-                                    value={newCampaignName}
-                                    onChange={(e) => setNewCampaignName(e.target.value)}
-                                />
-                            </div>
+                    <div>
+                        <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Select Agent</label>
+                        <select
+                            className="input"
+                            value={selectedAgentId}
+                            onChange={(e) => setSelectedAgentId(e.target.value)}
+                        >
+                            <option value="">-- Choose an Agent --</option>
+                            {agents?.map(agent => (
+                                <option key={agent.id} value={agent.id}>{agent.name}</option>
+                            ))}
+                        </select>
+                    </div>
 
-                            <div>
-                                <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Select Agent</label>
-                                <select
-                                    className="input"
-                                    value={selectedAgentId}
-                                    onChange={(e) => setSelectedAgentId(e.target.value)}
-                                >
-                                    <option value="">-- Choose an Agent --</option>
-                                    {agents?.map(agent => (
-                                        <option key={agent.id} value={agent.id}>{agent.name}</option>
-                                    ))}
-                                </select>
+                    <div>
+                        <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Upload Contacts (CSV)</label>
+                        <div
+                            className={`p-8 border-2 border-dashed border-[var(--border)] rounded-xl text-center cursor-pointer text-sm transition-colors ${contactFile ? "text-[var(--text-primary)] bg-blue-500/10" : "text-[var(--text-muted)]"}`}
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            <div className="flex items-center justify-center gap-2">
+                                {contactFile ? <FileText className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
+                                {contactFile ? contactFile.name : "Drop CSV or click to upload"}
                             </div>
-
-                            <div>
-                                <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Upload Contacts (CSV)</label>
-                                <div
-                                    className={`p-8 border-2 border-dashed border-[var(--border)] rounded-xl text-center cursor-pointer text-sm transition-colors ${contactFile ? "text-[var(--text-primary)] bg-blue-500/10" : "text-[var(--text-muted)]"}`}
-                                    onClick={() => fileInputRef.current?.click()}
-                                >
-                                    <div className="flex items-center justify-center gap-2">
-                                        {contactFile ? <FileText className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
-                                        {contactFile ? contactFile.name : "Drop CSV or click to upload"}
-                                    </div>
-                                    <div className="text-[11px] mt-1 opacity-70">Column &apos;phone&apos; required</div>
-                                </div>
-                                <input
-                                    type="file"
-                                    ref={fileInputRef}
-                                    accept=".csv"
-                                    className="hidden"
-                                    onChange={(e) => {
-                                        if (e.target.files?.[0]) setContactFile(e.target.files[0]);
-                                    }}
-                                />
-                            </div>
-
-                            <div className="flex gap-3 justify-end mt-2">
-                                <button className="btn-danger" onClick={() => setShowNewCampaign(false)} disabled={isCreating}>Cancel</button>
-                                <button className="btn-primary" onClick={handleCreate} disabled={isCreating}>
-                                    {isCreating ? "Creating..." : "Create Campaign"}
-                                </button>
-                            </div>
+                            <div className="text-[11px] mt-1 opacity-70">Column &apos;phone&apos; required</div>
                         </div>
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            accept=".csv"
+                            className="hidden"
+                            onChange={(e) => {
+                                if (e.target.files?.[0]) setContactFile(e.target.files[0]);
+                            }}
+                        />
+                    </div>
+
+                    <div className="flex gap-3 justify-end mt-2">
+                        <button className="btn-danger" onClick={() => setShowNewCampaign(false)} disabled={isCreating}>Cancel</button>
+                        <button className="btn-primary" onClick={handleCreate} disabled={isCreating}>
+                            {isCreating ? "Creating..." : "Create Campaign"}
+                        </button>
                     </div>
                 </div>
-            )}
+            </Modal>
         </div>
     );
 }

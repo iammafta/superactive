@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import useSWR from "swr";
 import {
     ArrowLeft, Save, Phone, Loader2, Plus, Trash2, ChevronDown,
-    ChevronUp, ArrowRight, X, AlertCircle, Settings2, PlayCircle, Maximize2,
+    ChevronUp, ArrowRight, X, AlertCircle, Settings2,
     User, Bot
 } from "lucide-react";
 import * as Tabs from "@radix-ui/react-tabs";
@@ -103,7 +103,7 @@ function StateCard({
     const otherStates = allStates.filter((_, i) => i !== index);
 
     // Filter out timeout from normal visual transitions, as we handle it natively with the explicit dropdown
-    const normalTransitions = Object.entries(state.transitions).filter(([trig, _]) => trig !== "timeout" && trig !== "fallback");
+    const normalTransitions = Object.entries(state.transitions).filter(([trig]) => trig !== "timeout" && trig !== "fallback");
     const fallbackTarget = state.transitions["timeout"] || state.transitions["fallback"] || "";
 
     const updateTransition = (key: string, value: string, oldKey?: string) => {
@@ -417,8 +417,8 @@ export default function AgentEditorPage() {
                 await updateAgent(agentId, payload);
             }
             router.push("/agents");
-        } catch (err: any) {
-            setSaveError(err.message || "Failed to save");
+        } catch (err: unknown) {
+            setSaveError((err as Error).message || "Failed to save");
         } finally {
             setSaving(false);
         }
@@ -487,7 +487,7 @@ export default function AgentEditorPage() {
                         <div className="md:col-span-1">
                             <label className="text-xs text-gray-400 mb-1.5 block">Agent Direction</label>
                             <select className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-colors"
-                                value={form.agent_type || "inbound"} onChange={(e) => updateField("agent_type", e.target.value as any)}>
+                                value={form.agent_type || "inbound"} onChange={(e) => updateField("agent_type", e.target.value as "inbound" | "outbound" | "hybrid")}>
                                 <option value="inbound">Inbound Responder</option>
                                 <option value="outbound">Outbound Dialer</option>
                                 <option value="hybrid">Hybrid (Both)</option>
