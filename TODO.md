@@ -111,6 +111,11 @@
 
 ## Remaining (Future / Backlog)
 - [x] HttpOnly JWT cookie flow
+- [ ] **Webhooks & API Keys:** Generate API keys and configure webhook URLs to receive post-call webhooks containing transcripts and variable extractions.
+- [ ] **Developer / Testing Playground:** Split-pane UI to test Voice AI with real-time Pipecat logs, LLM prompts, and latency metrics before starting a campaign.
+- [ ] **Custom Vocabulary / Pronunciation:** Configure STT adaptation rules and phonetic TTS spellings for tricky industry acronyms/names.
+- [ ] **Human Handoff (Tool/State):** Twilio `<Dial>` TwiML integration to forward ongoing calls to a human agent when the AI cannot resolve the query.
+- [ ] **Post-Call Automations:** Simple rule-builder (e.g. `IF status == 'converted' THEN email sales`) integrated into the campaign flow.
 - [ ] CI/CD pipeline (`.github/workflows/test.yml`)
 - [ ] Stripe billing integration
 - [ ] Superactive Prospector (Google Maps scraper)
