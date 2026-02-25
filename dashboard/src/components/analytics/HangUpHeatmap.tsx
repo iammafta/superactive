@@ -65,7 +65,7 @@ export default function HangUpHeatmap({ data }: HangUpHeatmapProps) {
                             color: '#fff',
                         }}
                         itemStyle={{ color: '#ef4444' }}
-                        formatter={(val: number) => [val, 'Calls']}
+                        formatter={(val: any) => [val, 'Calls']}
                     />
                     <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={20}>
                         {chartData.map((entry, index) => (
