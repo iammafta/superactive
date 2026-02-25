@@ -40,8 +40,11 @@ def _sync_insert_call(tenant_id: str, agent_id: str, call_id: str):
 @pytest.fixture
 def app():
     from server import app
-    app.state.limiter.enabled = False
-    return app
+    from rate_limit import limiter
+    limiter.enabled = False
+    app.state.limiter = limiter
+    yield app
+    limiter.enabled = True
 
 
 @pytest.fixture

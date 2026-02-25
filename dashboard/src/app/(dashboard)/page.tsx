@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
 import {
     Phone,
@@ -19,6 +20,10 @@ import {
 import Link from "next/link";
 import { API_BASE_URL, fetcher } from "@/lib/api";
 import type { AnalyticsData } from "@/lib/types";
+import CallVolumeChart from "@/components/analytics/CallVolumeChart";
+import CostTracker from "@/components/analytics/CostTracker";
+import HangUpHeatmap from "@/components/analytics/HangUpHeatmap";
+import DateRangePicker from "@/components/analytics/DateRangePicker";
 
 function formatDuration(seconds: number): string {
     const m = Math.floor(seconds / 60);
@@ -141,7 +146,8 @@ function OutcomeDonut({ outcomes }: { outcomes: Record<string, number> }) {
 }
 
 export default function DashboardPage() {
-    const { data, error, isLoading } = useSWR<AnalyticsData>(`${API_BASE_URL}/analytics`, fetcher);
+    const [days, setDays] = useState(30);
+    const { data, error, isLoading } = useSWR<AnalyticsData>(`${API_BASE_URL}/analytics?days=${days}`, fetcher);
 
     if (error) return <div className="p-12 text-center text-red-400">Failed to load analytics: {error.message}</div>;
     if (isLoading || !data) return (
@@ -177,9 +183,12 @@ export default function DashboardPage() {
                         Real-time overview of your AI workforce
                     </p>
                 </div>
-                <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-lg">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-emerald-400 text-sm font-semibold">Systems Online</span>
+                <div className="flex items-center gap-4">
+                    <DateRangePicker days={days} onChange={setDays} />
+                    <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-lg">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-emerald-400 text-sm font-semibold">Systems Online</span>
+                    </div>
                 </div>
             </div>
 
@@ -190,7 +199,7 @@ export default function DashboardPage() {
                 <div className="lg:col-span-2 xl:col-span-3 space-y-6">
 
                     {/* Top KPIs */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                         <MetricCard
                             label="Total Conversations"
                             value={data.total_calls.toLocaleString()}
@@ -212,6 +221,18 @@ export default function DashboardPage() {
                             Icon={CheckCircle2}
                             color="green"
                         />
+                        <CostTracker totalCost={data.total_cost} avgCostPerCall={data.avg_cost_per_call} />
+                    </div>
+
+                    {/* Middle Section: Volume Chart */}
+                    <div className="glass-card p-6 h-[400px] flex flex-col">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="section-title !mb-0">Call Volume</h3>
+                            <span className="text-xs text-[var(--text-muted)]">Last {days} days</span>
+                        </div>
+                        <div className="flex-1 min-h-0">
+                            <CallVolumeChart data={data.calls_per_day} />
+                        </div>
                     </div>
 
                     {/* Middle Section: Recent Transcripts & Outcomes */}
@@ -262,10 +283,18 @@ export default function DashboardPage() {
                         </div>
 
                         {/* Outcomes (1/3 width on XL) */}
-                        <div className="glass-card p-6 flex flex-col justify-center items-center h-[400px]">
-                            <h3 className="section-title self-start w-full">Outcomes</h3>
-                            <div className="flex-1 w-full flex items-center justify-center">
-                                <OutcomeDonut outcomes={data.outcomes} />
+                        <div className="flex flex-col gap-6">
+                            <div className="glass-card p-6 flex flex-col justify-center items-center h-[200px]">
+                                <h3 className="section-title self-start w-full">Outcomes</h3>
+                                <div className="flex-1 w-full flex items-center justify-center">
+                                    <OutcomeDonut outcomes={data.outcomes} />
+                                </div>
+                            </div>
+                            <div className="glass-card p-6 flex flex-col h-[176px]">
+                                <h3 className="section-title self-start w-full">Hang-Up Reasons</h3>
+                                <div className="flex-1 w-full relative">
+                                    <HangUpHeatmap data={data.hang_up_heatmap} />
+                                </div>
                             </div>
                         </div>
                     </div>

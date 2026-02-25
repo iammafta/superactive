@@ -18,8 +18,10 @@ import uuid
 
 @pytest.fixture(autouse=True)
 def bypass_rate_limit():
-    with patch("slowapi.util.get_remote_address", side_effect=lambda *args, **kwargs: str(uuid.uuid4())):
-        yield
+    from rate_limit import limiter
+    limiter.enabled = False
+    yield
+    limiter.enabled = True
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 

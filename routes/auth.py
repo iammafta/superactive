@@ -9,9 +9,6 @@ GET  /api/auth/me        - Get current user info (requires auth)
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr
 from loguru import logger
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
 from auth import (
     hash_password,
     verify_password,
@@ -23,9 +20,9 @@ from auth import (
     UserContext,
 )
 from db import db_create_tenant, db_create_user, db_get_user_by_email, db_get_tenant
+from rate_limit import limiter
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-limiter = Limiter(key_func=get_remote_address)
 
 
 # ── Request / Response Models ─────────────────────────────────────────

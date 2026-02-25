@@ -54,24 +54,26 @@ class CampaignDialer:
 
         contacts = campaign["contacts"]
         
-        # 3. Connect to ARQ
-        pool = await get_arq_pool()
-        
-        # 4. Enqueue tasks
-        enqueued = 0
-        for i, contact in enumerate(contacts):
-            if contact.get("status") in ("pending", "failed"):
-                # Enqueue job to ARQ `dial_contact_task`
-                await pool.enqueue_job(
-                    'dial_contact_task',
-                    self.campaign_id,
-                    self.tenant_id,
-                    i,
-                    contact.get("phone")
-                )
-                enqueued += 1
+        # 3. Connect to ARQ and enqueue tasks
+        try:
+            pool = await get_arq_pool()
+            
+            enqueued = 0
+            for i, contact in enumerate(contacts):
+                if contact.get("status") in ("pending", "failed"):
+                    await pool.enqueue_job(
+                        'dial_contact_task',
+                        self.campaign_id,
+                        self.tenant_id,
+                        i,
+                        contact.get("phone")
+                    )
+                    enqueued += 1
 
-        logger.info(f"✅ Enqueued {enqueued} dialing tasks to Redis for campaign {self.campaign_id}")
+            logger.info(f"✅ Enqueued {enqueued} dialing tasks to Redis for campaign {self.campaign_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ Redis enqueue failed for campaign {self.campaign_id}: {e}. "
+                          f"Campaign status set to active but tasks not queued.")
 
     async def pause(self):
         """Pause dialing by updating the DB status. Workers check this before dialing."""

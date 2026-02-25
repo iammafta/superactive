@@ -1,8 +1,8 @@
 import os
 import uuid
 import sys
-import asyncio
 import time
+import pytest
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -10,11 +10,48 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["POSTGRES_DB"] = "superactive"
 os.environ["DISABLE_TELEMETRY"] = "1"
 
+def _sync_verify_contacts(campaign_id: str):
+    """Verify contact statuses using synchronous psycopg2 (avoids event loop conflicts)."""
+    import psycopg2
+
+    dsn = (
+        f"host={os.environ.get('POSTGRES_HOST', 'localhost')} "
+        f"port={os.environ.get('POSTGRES_PORT', '5432')} "
+        f"dbname={os.environ.get('POSTGRES_DB', 'superactive')} "
+        f"user={os.environ.get('POSTGRES_USER', 'superactive')} "
+        f"password={os.environ.get('POSTGRES_PASSWORD', 'superactive')}"
+    )
+    conn = psycopg2.connect(dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT status, call_sid FROM contacts WHERE campaign_id = %s",
+                (campaign_id,),
+            )
+            rows = cur.fetchall()
+        assert len(rows) == 2, f"Expected 2 contacts, got {len(rows)}"
+        for status, call_sid in rows:
+            assert status == "called", f"Expected 'called', got {status}"
+            assert call_sid is not None
+            assert call_sid.startswith("CA_mock_")
+        print("========================================")
+        print("Worker end-to-end verification successful!")
+        print("========================================")
+    finally:
+        conn.close()
+
+
+@pytest.mark.skipif(
+    not os.environ.get("RUN_WORKER_TESTS"),
+    reason="Requires running ARQ worker process (set RUN_WORKER_TESTS=1)"
+)
 def test_worker_end_to_end():
     print("Importing server...")
     from server import app
+    from rate_limit import limiter
     print("Server imported.")
-    app.state.limiter.enabled = False
+    limiter.enabled = False
+    app.state.limiter = limiter
     
     unique_id = str(uuid.uuid4())
     
@@ -70,30 +107,12 @@ def test_worker_end_to_end():
         # 6. Verify database reflects the updates performed by the worker
         progress_res = client.get(f"/api/campaigns/{campaign_id}/progress")
         assert progress_res.status_code == 200
-        progress = progress_res.json()
-        
-    from db import db_get_contacts
-    import db
-    # We need async event loop to call db_get_contacts
-    async def verify_contacts():
-        contacts = await db_get_contacts(campaign_id)
-        assert len(contacts) == 2
-        for contact in contacts:
-            assert contact["status"] == "called", f"Expected 'called', got {contact['status']}"
-            assert contact["call_sid"] is not None
-            assert contact["call_sid"].startswith("CA_mock_")
-        print("========================================")
-        print("Worker end-to-end verification successful!")
-        print("========================================")
-        
-        # Cleanly close the pool created on this temporary event loop
-        if db._pool:
-            await db._pool.close()
-            db._pool = None
-        
-    db._pool = None
-    asyncio.run(verify_contacts())
-    db._pool = None
+
+    # Verify contacts using sync psycopg2 (avoids event loop issues)
+    _sync_verify_contacts(campaign_id)
+
+    limiter.enabled = True
 
 if __name__ == "__main__":
     test_worker_end_to_end()
+

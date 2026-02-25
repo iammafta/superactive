@@ -17,8 +17,7 @@ load_dotenv()
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from loguru import logger
 logger.remove()
@@ -33,6 +32,7 @@ init_telemetry("superactive-backend")
 
 from db import init_db
 from routes import all_routers
+from rate_limit import limiter
 
 
 # ── Lifespan (startup / shutdown) ─────────────────────────────────────
@@ -52,10 +52,6 @@ async def lifespan(app: FastAPI):
     
     import db
     db._pool = None
-
-
-# ── Rate Limiter ──────────────────────────────────────────────────────
-limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(title="Superactive", version="4.0", lifespan=lifespan)
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
