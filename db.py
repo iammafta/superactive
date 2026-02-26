@@ -230,6 +230,16 @@ async def db_update_tenant(tenant_id: str, **fields) -> bool:
         return res.endswith("1")  # Returns something like 'UPDATE 1'
 
 
+async def get_twilio_credentials(tenant_id: str) -> dict:
+    """Get Twilio credentials for a tenant (DB-first, env fallback)."""
+    tenant = await db_get_tenant(tenant_id)
+    return {
+        "account_sid": (tenant or {}).get("twilio_sid") or os.getenv("TWILIO_ACCOUNT_SID", ""),
+        "auth_token": (tenant or {}).get("twilio_token") or os.getenv("TWILIO_AUTH_TOKEN", ""),
+        "phone_number": (tenant or {}).get("twilio_phone") or os.getenv("TWILIO_PHONE_NUMBER", ""),
+    }
+
+
 # ── User CRUD ────────────────────────────────────────────────────────
 
 async def db_create_user(email: str, password_hash: str, tenant_id: str, role: str = "admin") -> dict:

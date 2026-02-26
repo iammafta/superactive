@@ -10,6 +10,7 @@ from loguru import logger
 
 from call_logger import call_logger
 from auth import get_current_user, UserContext
+from db import get_twilio_credentials
 
 router = APIRouter(prefix="/api", tags=["calls"])
 
@@ -73,9 +74,10 @@ async def api_takeover_call(
         
     try:
         from twilio.rest import Client
+        creds = await get_twilio_credentials(user.tenant_id)
         client = Client(
-            os.getenv("TWILIO_ACCOUNT_SID"),
-            os.getenv("TWILIO_AUTH_TOKEN"),
+            creds["account_sid"],
+            creds["auth_token"],
         )
         
         human_number = os.getenv("TAKEOVER_PHONE_NUMBER", os.getenv("TWILIO_PHONE_NUMBER", ""))

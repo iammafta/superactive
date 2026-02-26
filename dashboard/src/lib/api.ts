@@ -136,6 +136,9 @@ export async function saveSettings(data: {
     business_name?: string;
     owner_email?: string;
     public_url?: string;
+    twilio_sid?: string;
+    twilio_token?: string;
+    twilio_phone?: string;
 }) {
     return mutate(`${API_BASE_URL}/settings`, "PUT", data);
 }

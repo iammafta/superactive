@@ -17,7 +17,7 @@ from loguru import logger
 from pipecat.services.llm_service import FunctionCallParams
 
 from agent_config import AgentConfig
-from db import db_log_lead, db_lookup_client
+from db import db_log_lead, db_lookup_client, get_twilio_credentials
 
 
 # ── Tool Definitions (Gemini function declaration format) ─────────────
@@ -258,9 +258,10 @@ async def handle_transfer_to_human(params: FunctionCallParams, agent_config: Opt
         # Real Twilio transfer — redirect the active call to the human's number
         try:
             from twilio.rest import Client
+            creds = await get_twilio_credentials(agent_config.tenant_id)
             client = Client(
-                os.getenv("TWILIO_ACCOUNT_SID"),
-                os.getenv("TWILIO_AUTH_TOKEN"),
+                creds["account_sid"],
+                creds["auth_token"],
             )
             # Update the live call with TwiML that dials the human
             from xml.sax.saxutils import escape as _xml_esc
@@ -296,7 +297,7 @@ async def handle_transfer_to_human(params: FunctionCallParams, agent_config: Opt
     await params.result_callback(result)
 
 
-async def handle_send_followup_sms(params: FunctionCallParams):
+async def handle_send_followup_sms(params: FunctionCallParams, agent_config: Optional[AgentConfig] = None):
     """Send follow-up SMS via Twilio."""
     args = params.arguments
     logger.info(f"📱 Sending SMS to {args.get('phone', 'unknown')}")
@@ -304,13 +305,22 @@ async def handle_send_followup_sms(params: FunctionCallParams):
     # In production, this calls Twilio SMS API
     try:
         from twilio.rest import Client
+        tenant_id = agent_config.tenant_id if agent_config else None
+        if tenant_id:
+            creds = await get_twilio_credentials(tenant_id)
+        else:
+            creds = {
+                "account_sid": os.getenv("TWILIO_ACCOUNT_SID", ""),
+                "auth_token": os.getenv("TWILIO_AUTH_TOKEN", ""),
+                "phone_number": os.getenv("TWILIO_PHONE_NUMBER", ""),
+            }
         client = Client(
-            os.getenv("TWILIO_ACCOUNT_SID"),
-            os.getenv("TWILIO_AUTH_TOKEN"),
+            creds["account_sid"],
+            creds["auth_token"],
         )
         message = client.messages.create(
             body=args["message"],
-            from_=os.getenv("TWILIO_PHONE_NUMBER"),
+            from_=creds["phone_number"],
             to=args["phone"],
         )
         result = {"status": "sent", "sid": message.sid}
@@ -545,6 +555,8 @@ def register_tools_for_agent(llm, agent_config: AgentConfig, call_id: str = None
                                 await _handler(params, agent_config=_cfg)
                             elif _name == "transfer_to_human":
                                 await _handler(params, agent_config=_cfg, call_sid=_sid)
+                            elif _name == "send_followup_sms":
+                                await _handler(params, agent_config=_cfg)
                             else:
                                 await _handler(params)
                             logger.info(f"✅ Handler for {_name} completed.")
@@ -567,6 +579,8 @@ def register_tools_for_agent(llm, agent_config: AgentConfig, call_id: str = None
                         await _handler(params, agent_config=_cfg)
                     elif _name == "transfer_to_human":
                         await _handler(params, agent_config=_cfg, call_sid=_sid)
+                    elif _name == "send_followup_sms":
+                        await _handler(params, agent_config=_cfg)
                     else:
                         await _handler(params)
                 llm.register_function(tool_name, direct_wrapper)

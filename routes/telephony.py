@@ -46,6 +46,7 @@ from state_machine import (
 from call_logger import call_logger
 import time
 from telemetry import get_meter, get_tracer
+from db import get_twilio_credentials
 from pipecat.frames.frames import AudioRawFrame, ErrorFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from opentelemetry.metrics import CallbackOptions, Observation
@@ -158,6 +159,9 @@ async def incoming_call(request: Request):
     # 1. Validate Twilio Signature
     if os.getenv("TWILIO_VALIDATION", "true").lower() != "false":
         auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
+        # Note: Incoming call webhook validation uses env-var token since
+        # we don't know the tenant yet at this point (no JWT context).
+        # Per-tenant validation would require the agent_id in the URL.
         if auth_token:
             validator = RequestValidator(auth_token)
             signature = request.headers.get("X-Twilio-Signature", "")
@@ -275,6 +279,8 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"Failed to init VAD, continuing without: {e}")
 
     # 3. Transport — handles Twilio's µ-law audio format
+    # Resolve per-tenant Twilio credentials
+    twilio_creds = await get_twilio_credentials(agent_config.tenant_id)
     transport = FastAPIWebsocketTransport(
         websocket=websocket,
         params=FastAPIWebsocketParams(
@@ -286,8 +292,8 @@ async def websocket_endpoint(websocket: WebSocket):
             serializer=TwilioFrameSerializer(
                 stream_sid=stream_sid,
                 call_sid=call_sid,
-                account_sid=os.getenv("TWILIO_ACCOUNT_SID", ""),
-                auth_token=os.getenv("TWILIO_AUTH_TOKEN", ""),
+                account_sid=twilio_creds["account_sid"],
+                auth_token=twilio_creds["auth_token"],
                 params=TwilioFrameSerializer.InputParams(auto_hang_up=True),
             ),
         ),
@@ -473,15 +479,16 @@ async def api_outbound_call(req: OutboundCallRequest, user: UserContext = Depend
 
     try:
         from twilio.rest import Client
+        creds = await get_twilio_credentials(user.tenant_id)
         client = Client(
-            os.getenv("TWILIO_ACCOUNT_SID"),
-            os.getenv("TWILIO_AUTH_TOKEN"),
+            creds["account_sid"],
+            creds["auth_token"],
         )
 
         host = os.getenv("PUBLIC_URL", f"https://localhost:{PORT}")
 
-        from_number = os.getenv("TWILIO_PHONE_NUMBER", "")
-        if not from_number.startswith("+"):
+        from_number = creds["phone_number"]
+        if from_number and not from_number.startswith("+"):
             from_number = f"+{from_number}"
 
         call = client.calls.create(

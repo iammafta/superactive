@@ -96,16 +96,16 @@
 - [x] Add welcome banner on dashboard when 0 calls exist
 - [x] Create "Quick Start" card: Create Agent → Test Call → Go Live
 
-### Sprint 4: Analytics Upgrade
-- [ ] Add time-series call volume chart using `calls_per_day` data (already in API)
-- [ ] Add cost tracking display (data exists in `AnalyticsData`)
-- [ ] Add date range picker for analytics
-- [ ] Display `hang_up_heatmap` data (already in API)
+### Sprint 4: Analytics Upgrade ✅
+- [x] Add time-series call volume chart using `calls_per_day` data (already in API)
+- [x] Add cost tracking display (data exists in `AnalyticsData`)
+- [x] Add date range picker for analytics
+- [x] Display `hang_up_heatmap` data (already in API)
 
-### Sprint 5: Settings & Integrations (SaaS Readiness)
-- [ ] Make Twilio credentials editable in UI (fields exist in DB)
-- [ ] Remove "Configured via .env" messaging
-- [ ] Add per-tenant Twilio credential management
+### Sprint 5: Settings & Integrations (SaaS Readiness) ✅
+- [x] Make Twilio credentials editable in UI (fields exist in DB)
+- [x] Remove "Configured via .env" messaging
+- [x] Add per-tenant Twilio credential management
 
 ---
 

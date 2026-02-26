@@ -20,6 +20,9 @@ class SettingsUpdate(BaseModel):
     business_name: str | None = None
     owner_email: str | None = None
     public_url: str | None = None
+    twilio_sid: str | None = None
+    twilio_token: str | None = None
+    twilio_phone: str | None = None
 
 
 def _mask(value: str, reveal: int = 4) -> str:
@@ -36,14 +39,10 @@ async def get_settings(user: UserContext = Depends(get_current_user)):
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
-    # Read-only fields from environment or DB (masked for security)
-    # Note: Tenant table has twilio_sid etc if we move to multi-tenant-own-keys
-    # For now, we use env vars for global keys, but tenant DB might have overrides.
-    # Current requirement: "Constraint: No paid infrastructure... existing Cloudflare free tunnel".
-    # We'll return mixed env/db for now.
-    
-    twilio_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
-    twilio_phone = os.getenv("TWILIO_PHONE_NUMBER", "")
+    # Twilio: DB-first, env fallback
+    twilio_sid = tenant.get("twilio_sid") or os.getenv("TWILIO_ACCOUNT_SID", "")
+    twilio_token = tenant.get("twilio_token") or os.getenv("TWILIO_AUTH_TOKEN", "")
+    twilio_phone_val = tenant.get("twilio_phone") or os.getenv("TWILIO_PHONE_NUMBER", "")
     gcp_project = os.getenv("GCP_PROJECT_ID", "")
     gcp_location = os.getenv("GCP_LOCATION", "")
 
@@ -52,10 +51,12 @@ async def get_settings(user: UserContext = Depends(get_current_user)):
         "business_name": tenant.get("name", ""),
         "owner_email": tenant.get("email", ""),
         "public_url": tenant.get("public_url", ""),
-        # Read-only (masked)
+        # Twilio (editable, but masked on read)
         "twilio_sid_masked": _mask(twilio_sid),
-        "twilio_token_masked": "••••••••••••",
-        "twilio_phone": twilio_phone,
+        "twilio_token_masked": _mask(twilio_token),
+        "twilio_phone": twilio_phone_val,
+        "has_custom_twilio": bool(tenant.get("twilio_sid")),
+        # Read-only
         "gcp_project": gcp_project,
         "gcp_location": gcp_location,
         "plan": tenant.get("plan", "starter"),
@@ -72,6 +73,12 @@ async def update_settings(body: SettingsUpdate, user: UserContext = Depends(get_
         updates["email"] = body.owner_email
     if body.public_url is not None:
         updates["public_url"] = body.public_url
+    if body.twilio_sid is not None:
+        updates["twilio_sid"] = body.twilio_sid
+    if body.twilio_token is not None:
+        updates["twilio_token"] = body.twilio_token
+    if body.twilio_phone is not None:
+        updates["twilio_phone"] = body.twilio_phone
 
     if not updates:
         return {"status": "no_changes"}

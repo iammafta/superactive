@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import useSWR from "swr";
-import { Save, RotateCcw, Loader2, CheckCircle, Phone, Globe, Cloud } from "lucide-react";
+import { Save, RotateCcw, Loader2, CheckCircle, Phone, Globe, Cloud, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { API_BASE_URL, fetcher, saveSettings } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
@@ -12,10 +12,12 @@ interface Settings {
     business_name: string;
     owner_email: string;
     public_url: string;
-    // Read-only (from env, masked)
+    // Twilio (masked on read, editable on save)
     twilio_sid_masked: string;
     twilio_token_masked: string;
     twilio_phone: string;
+    has_custom_twilio: boolean;
+    // Read-only
     gcp_project: string;
     gcp_location: string;
 }
@@ -31,6 +33,11 @@ export default function SettingsPage() {
     const [ownerEmail, setOwnerEmail] = useState("");
     const [publicUrl, setPublicUrl] = useState("");
 
+    // Twilio editable state (blank = use server defaults)
+    const [twilioSid, setTwilioSid] = useState("");
+    const [twilioToken, setTwilioToken] = useState("");
+    const [twilioPhone, setTwilioPhone] = useState("");
+
     // UI state
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
@@ -41,6 +48,10 @@ export default function SettingsPage() {
             setBusinessName(settings.business_name);
             setOwnerEmail(settings.owner_email);
             setPublicUrl(settings.public_url);
+            setTwilioPhone(settings.twilio_phone);
+            // SID and token show masked values as placeholders, start blank
+            setTwilioSid("");
+            setTwilioToken("");
         }
     }, [settings]);
 
@@ -48,11 +59,16 @@ export default function SettingsPage() {
         setSaving(true);
         setSaved(false);
         try {
-            await saveSettings({
+            const payload: Record<string, string> = {
                 business_name: businessName,
                 owner_email: ownerEmail,
                 public_url: publicUrl,
-            });
+            };
+            // Only send Twilio fields if user explicitly typed something
+            if (twilioSid) payload.twilio_sid = twilioSid;
+            if (twilioToken) payload.twilio_token = twilioToken;
+            if (twilioPhone !== (settings?.twilio_phone ?? "")) payload.twilio_phone = twilioPhone;
+            await saveSettings(payload);
             await refreshSettings();
             setSaved(true);
             toast.success("Settings saved successfully!");
@@ -69,6 +85,9 @@ export default function SettingsPage() {
             setBusinessName(settings.business_name);
             setOwnerEmail(settings.owner_email);
             setPublicUrl(settings.public_url);
+            setTwilioPhone(settings.twilio_phone);
+            setTwilioSid("");
+            setTwilioToken("");
         }
     };
 
@@ -111,30 +130,55 @@ export default function SettingsPage() {
                 </div>
             </div>
 
-            {/* Twilio — Read-Only */}
+            {/* Twilio — Editable */}
             <div className="glass-card p-6 mb-5">
                 <div className="flex items-center gap-2.5 mb-4">
                     <div className="w-8 h-8 rounded-lg bg-red-500/15 flex items-center justify-center">
                         <Phone className="w-4 h-4 text-red-400" />
                     </div>
-                    <div>
+                    <div className="flex-1">
                         <h3 className="text-[15px] font-semibold">Twilio Integration</h3>
                         <span className="text-[11px] text-[var(--text-muted)]">Telephony provider</span>
                     </div>
+                    {settings.has_custom_twilio && (
+                        <span className="flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                            <ShieldCheck className="w-3 h-3" />
+                            Custom credentials
+                        </span>
+                    )}
                 </div>
                 <div className="flex flex-col gap-4">
                     <div>
                         <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Account SID</label>
-                        <input className="input opacity-60 cursor-not-allowed" value={settings.twilio_sid_masked} readOnly />
+                        <input
+                            className="input"
+                            value={twilioSid}
+                            onChange={(e) => setTwilioSid(e.target.value)}
+                            placeholder={settings.twilio_sid_masked || "Leave blank for server default"}
+                        />
                     </div>
                     <div>
                         <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Auth Token</label>
-                        <input className="input opacity-60 cursor-not-allowed" value={settings.twilio_token_masked} readOnly type="password" />
+                        <input
+                            className="input"
+                            value={twilioToken}
+                            onChange={(e) => setTwilioToken(e.target.value)}
+                            placeholder={settings.twilio_token_masked || "Leave blank for server default"}
+                            type="password"
+                        />
                     </div>
                     <div>
                         <label className="text-[13px] text-[var(--text-muted)] mb-1.5 block">Phone Number</label>
-                        <input className="input opacity-60 cursor-not-allowed" value={settings.twilio_phone} readOnly />
+                        <input
+                            className="input"
+                            value={twilioPhone}
+                            onChange={(e) => setTwilioPhone(e.target.value)}
+                            placeholder="+1234567890"
+                        />
                     </div>
+                    <p className="text-xs text-[var(--text-muted)]">
+                        Leave fields blank to use server-configured defaults. Only fill in to override with your own Twilio account.
+                    </p>
                 </div>
             </div>
 
