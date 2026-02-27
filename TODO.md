@@ -111,10 +111,21 @@
 
 ## Remaining (Future / Backlog)
 - [x] HttpOnly JWT cookie flow
+- [x] Fix dashboard login (API_BASE_URL localhost vs 127.0.0.1 cookie issue)
+- [x] Fix end_call persistence race condition (asyncio.shield)
+- [x] Fix outbound calls not appearing in Live Monitor (immediate call_logger.start_call)
+- [x] Make call_logger.start_call idempotent (prevent duplicate events)
+- [ ] Migrate to Telnyx (plan reviewed — see implementation_plan.md v2)
+  - [ ] Switch TwilioFrameSerializer → TelnyxFrameSerializer (auto-hangup fix)
+  - [ ] Replace Twilio SDK with httpx + per-request Bearer auth (race condition fix)
+  - [ ] DB migration: rename twilio_* columns → telnyx_*
+  - [ ] Update settings UI labels
+  - [ ] Update tests
+  - [ ] Live call verification
 - [ ] **Webhooks & API Keys:** Generate API keys and configure webhook URLs to receive post-call webhooks containing transcripts and variable extractions.
 - [ ] **Developer / Testing Playground:** Split-pane UI to test Voice AI with real-time Pipecat logs, LLM prompts, and latency metrics before starting a campaign.
 - [ ] **Custom Vocabulary / Pronunciation:** Configure STT adaptation rules and phonetic TTS spellings for tricky industry acronyms/names.
-- [ ] **Human Handoff (Tool/State):** Twilio `<Dial>` TwiML integration to forward ongoing calls to a human agent when the AI cannot resolve the query.
+- [ ] **Human Handoff (Tool/State):** Telnyx call transfer integration to forward ongoing calls to a human agent when the AI cannot resolve the query.
 - [ ] **Post-Call Automations:** Simple rule-builder (e.g. `IF status == 'converted' THEN email sales`) integrated into the campaign flow.
 - [ ] CI/CD pipeline (`.github/workflows/test.yml`)
 - [ ] Stripe billing integration
@@ -123,3 +134,4 @@
 - [ ] Mobile responsive layouts
 - [ ] Call recording storage (S3/GCS)
 - [ ] Accessibility (ARIA labels, keyboard nav)
+

@@ -1,6 +1,6 @@
 
-// Use NEXT_PUBLIC_API_URL or fallback to 127.0.0.1
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8765/api";
+// Use NEXT_PUBLIC_API_URL or fallback to localhost
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8765/api";
 
 
 export async function fetcher<T>(url: string): Promise<T> {

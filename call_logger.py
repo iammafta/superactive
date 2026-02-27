@@ -62,7 +62,11 @@ class CallLogger:
         self._active_calls: dict[str, CallLog] = {}
 
     def start_call(self, call_id: str, agent_id: str, business_type: str, tenant_id: str) -> CallLog:
-        """Start logging a new call."""
+        """Start logging a new call. Idempotent — returns existing log if already registered."""
+        if call_id in self._active_calls:
+            logger.debug(f"📊 Call already registered: {call_id} — skipping duplicate start_call")
+            return self._active_calls[call_id]
+
         log = CallLog(
             call_id=call_id,
             tenant_id=tenant_id,

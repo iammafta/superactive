@@ -392,7 +392,12 @@ async def websocket_endpoint(websocket: WebSocket):
         context_aggregator.assistant(),  # Store assistant response
     ]
 
-    from pipecat.utils.tracing import TurnTraceObserver
+    try:
+        from pipecat.utils.tracing import TurnTraceObserver
+        _observers = [TurnTraceObserver()]
+    except ImportError:
+        logger.warning("TurnTraceObserver not available in this Pipecat version — skipping")
+        _observers = []
 
     pipeline = Pipeline(pipeline_components)
 
@@ -403,7 +408,7 @@ async def websocket_endpoint(websocket: WebSocket):
             enable_metrics=True,
             enable_usage_metrics=True,
         ),
-        observers=[TurnTraceObserver()]
+        observers=_observers
     )
 
     # Kick off the conversation with the appropriate greeting
@@ -446,13 +451,21 @@ async def websocket_endpoint(websocket: WebSocket):
             if info["turn_count"] < 3:
                 outcome = "hung_up"
         
-        # Shield the DB persist from being cancelled if the websocket dropped ungracefully
+        # Shield the DB persist from cancellation during websocket teardown
         try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(call_logger.end_call(call_sid, outcome=outcome, hang_up_state=hang_up_state))
-        except RuntimeError:
-            # Fallback if no loop
-            await call_logger.end_call(call_sid, outcome=outcome, hang_up_state=hang_up_state)
+            await asyncio.shield(
+                call_logger.end_call(call_sid, outcome=outcome, hang_up_state=hang_up_state)
+            )
+        except asyncio.CancelledError:
+            # Shield was cancelled but the inner task keeps running — 
+            # force one more attempt to persist
+            logger.warning("end_call shielded from cancellation, retrying persist")
+            try:
+                await call_logger.end_call(call_sid, outcome=outcome, hang_up_state=hang_up_state)
+            except Exception as ex:
+                logger.error(f"Final end_call attempt failed: {ex}")
+        except Exception as e:
+            logger.error(f"end_call failed: {e}")
 
         logger.info("📞 Call ended")
 
@@ -498,6 +511,15 @@ async def api_outbound_call(req: OutboundCallRequest, user: UserContext = Depend
         )
 
         logger.info(f"📤 Outbound call initiated: {call.sid} → {req.to} (agent: {req.agent_id})")
+
+        # Immediately register with call_logger so Live Monitor picks it up
+        call_logger.start_call(
+            call_id=call.sid,
+            agent_id=req.agent_id,
+            business_type=agent.business_type or "outbound",
+            tenant_id=user.tenant_id,
+        )
+
         return {
             "status": "initiated",
             "call_sid": call.sid,
