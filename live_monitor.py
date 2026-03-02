@@ -11,9 +11,11 @@ import asyncio
 import json
 from loguru import logger
 from fastapi import WebSocket
-
+from redis_client import get_redis
 
 class LiveMonitorManager:
+    REDIS_CHANNEL = "superactive:live_monitor"
+
     def __init__(self):
         # active websocket connections: list of WebSockets
         self.active_connections: list[WebSocket] = []
@@ -45,12 +47,50 @@ class LiveMonitorManager:
             old = self.subscriptions.pop(websocket)
             logger.info(f"📡 Monitor unsubscribed from: {old}")
 
-    async def broadcast_event(self, event_type: str, data: dict, call_id: str = None, tenant_id: str = None):
-        """
-        Broadcast an event to connected clients.
-        Global events (call_started, state_transition, etc) go to same-tenant clients.
-        Detail events (transcript) go only to subscribed + same-tenant clients.
-        """
+    async def listen_to_redis(self):
+        """Continuously listen to the Redis Pub/Sub channel and broadcast to local WebSockets."""
+        r = get_redis()
+        pubsub = r.pubsub()
+        await pubsub.subscribe(self.REDIS_CHANNEL)
+        logger.info("📡 LiveMonitor subscribed to Redis Pub/Sub")
+        try:
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    payload = json.loads(message["data"])
+                    await self._send_to_websockets(
+                        event_type=payload["event_type"],
+                        data=payload["data"],
+                        call_id=payload.get("call_id"),
+                        tenant_id=payload.get("tenant_id")
+                    )
+        except asyncio.CancelledError:
+            logger.info("📡 LiveMonitor Redis listener cancelled")
+        finally:
+            await pubsub.unsubscribe(self.REDIS_CHANNEL)
+            await pubsub.close()
+
+    async def emit(self, event_type: str, data: dict | str, call_id: str = None, tenant_id: str = None):
+        """Publish an event to the Redis channel for all workers to see."""
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except:
+                pass
+
+        payload = {
+            "event_type": event_type,
+            "data": data,
+            "call_id": call_id,
+            "tenant_id": tenant_id
+        }
+        try:
+            r = get_redis()
+            await r.publish(self.REDIS_CHANNEL, json.dumps(payload))
+        except Exception as e:
+            logger.error(f"Failed to publish to Redis Pub/Sub: {e}")
+
+    async def _send_to_websockets(self, event_type: str, data: dict, call_id: str = None, tenant_id: str = None):
+        """Broadcast an event ONLY to connected clients in this process."""
         message = {
             "type": event_type,
             "call_id": call_id,
@@ -80,13 +120,5 @@ class LiveMonitorManager:
 
         for connection in to_remove:
             self.disconnect(connection)
-
-    def emit(self, event_type: str, data: dict, call_id: str = None, tenant_id: str = None):
-        """Helper to fire-and-forget an event broadcast from synchronous code."""
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self.broadcast_event(event_type, data, call_id, tenant_id))
-        except RuntimeError:
-            pass
 
 live_monitor = LiveMonitorManager()

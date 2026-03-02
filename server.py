@@ -10,6 +10,7 @@ Route modules handle individual API domains.
 import os
 import sys
 from contextlib import asynccontextmanager
+import asyncio
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -38,19 +39,39 @@ from rate_limit import limiter
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize database on startup, cleanup on shutdown."""
+    """Initialize database and Redis on startup, cleanup on shutdown."""
     from db import init_db, get_pool
+    from redis_client import init_redis, close_redis
+    from live_monitor import live_monitor
+
     logger.info("🚀 Superactive starting up...")
+    
+    # Init DB
     await init_db()
     logger.info("✅ Database ready")
+    
+    # Init Redis
+    await init_redis()
+    
+    # Start Redis Pub/Sub listener for WebSockets
+    app.state.monitor_task = asyncio.create_task(live_monitor.listen_to_redis())
+    logger.info("✅ LiveMonitor Pub/Sub ready")
+    
     yield
+    
     logger.info("🛑 Superactive shutting down")
+    
+    # Stop Pub/Sub listener
+    if hasattr(app.state, "monitor_task"):
+        app.state.monitor_task.cancel()
     pool = await get_pool()
     if pool:
         await pool.close()
     
     import db
     db._pool = None
+    
+    await close_redis()
 
 app = FastAPI(title="Superactive", version="4.0", lifespan=lifespan)
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor

@@ -10,13 +10,15 @@ import asyncio
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict
 
 from pydantic import BaseModel, Field
 from loguru import logger
 
-from db import db_persist_call, db_get_calls, db_get_analytics
+from db import db_persist_call, db_get_calls, db_get_analytics, db_get_tenant
+from webhook_dispatcher import dispatch_post_call_webhook
 from live_monitor import live_monitor
+from redis_client import get_redis
 
 class CallLog(BaseModel):
     """Single call record — anonymized for cross-client learning."""
@@ -56,16 +58,27 @@ class CallLog(BaseModel):
 
 
 class CallLogger:
-    """Manages call logging for the value flywheel."""
+    """Manages call logging for the value flywheel unconditionally backed by Redis."""
 
-    def __init__(self):
-        self._active_calls: dict[str, CallLog] = {}
+    REDIS_KEY = "superactive:active_calls"
 
-    def start_call(self, call_id: str, agent_id: str, business_type: str, tenant_id: str) -> CallLog:
+    async def _get_call(self, call_id: str) -> Optional[CallLog]:
+        r = get_redis()
+        data = await r.hget(self.REDIS_KEY, call_id)
+        if data:
+            return CallLog.model_validate_json(data)
+        return None
+
+    async def _save_call(self, log: CallLog):
+        r = get_redis()
+        await r.hset(self.REDIS_KEY, log.call_id, log.model_dump_json())
+
+    async def start_call(self, call_id: str, agent_id: str, business_type: str, tenant_id: str) -> CallLog:
         """Start logging a new call. Idempotent — returns existing log if already registered."""
-        if call_id in self._active_calls:
-            logger.debug(f"📊 Call already registered: {call_id} — skipping duplicate start_call")
-            return self._active_calls[call_id]
+        existing = await self._get_call(call_id)
+        if existing:
+            logger.debug(f"📊 Call already registered in Redis: {call_id} — skipping duplicate start_call")
+            return existing
 
         log = CallLog(
             call_id=call_id,
@@ -74,10 +87,10 @@ class CallLogger:
             business_type=business_type,
             started_at=datetime.now().isoformat(),
         )
-        self._active_calls[call_id] = log
+        await self._save_call(log)
         logger.info(f"📊 Call logging started: {call_id} (agent: {agent_id}, tenant: {tenant_id})")
         
-        live_monitor.emit("call_started", {
+        await live_monitor.emit("call_started", {
             "call_id": call_id,
             "agent_id": agent_id,
             "business_type": business_type,
@@ -88,27 +101,29 @@ class CallLogger:
         
         return log
 
-    def add_transcript(self, call_id: str, role: str, text: str):
+    async def add_transcript(self, call_id: str, role: str, text: str):
         """Add a transcript entry."""
-        if call_id in self._active_calls:
+        log = await self._get_call(call_id)
+        if log:
             ts = datetime.now().isoformat()
-            self._active_calls[call_id].transcript.append({
+            log.transcript.append({
                 "role": role,
                 "text": text,
                 "ts": ts,
             })
+            await self._save_call(log)
             logger.debug(f"📝 Transcript [{role}]: {text[:80]}")
             
-            live_monitor.emit("transcript", {
+            await live_monitor.emit("transcript", {
                 "role": role,
                 "text": text,
                 "ts": ts
-            }, call_id=call_id, tenant_id=self._active_calls[call_id].tenant_id)
+            }, call_id=call_id, tenant_id=log.tenant_id)
 
-    def record_state_transition(self, call_id: str, from_state: str, to_state: str, turn: int):
+    async def record_state_transition(self, call_id: str, from_state: str, to_state: str, turn: int):
         """Record a state transition."""
-        if call_id in self._active_calls:
-            log = self._active_calls[call_id]
+        log = await self._get_call(call_id)
+        if log:
             log.state_transitions.append({
                 "from": from_state,
                 "to": to_state,
@@ -117,35 +132,42 @@ class CallLogger:
             if to_state not in log.states_visited:
                 log.states_visited.append(to_state)
             
-            live_monitor.emit("state_transition", {
+            await self._save_call(log)
+            await live_monitor.emit("state_transition", {
                 "from_state": from_state,
                 "to_state": to_state,
                 "turn": turn,
                 "states_visited": log.states_visited
             }, call_id=call_id, tenant_id=log.tenant_id)
 
-    def record_tool_use(self, call_id: str, tool_name: str):
+    async def record_tool_use(self, call_id: str, tool_name: str):
         """Record that a tool was used."""
-        if call_id in self._active_calls:
-            self._active_calls[call_id].tools_used.append(tool_name)
+        log = await self._get_call(call_id)
+        if log:
+            log.tools_used.append(tool_name)
+            await self._save_call(log)
 
-    def record_frustration(self, call_id: str):
+    async def record_frustration(self, call_id: str):
         """Record that frustration was detected."""
-        if call_id in self._active_calls:
-            self._active_calls[call_id].frustration_triggered = True
+        log = await self._get_call(call_id)
+        if log:
+            log.frustration_triggered = True
+            await self._save_call(log)
 
-    def record_escalation(self, call_id: str):
+    async def record_escalation(self, call_id: str):
         """Record that escalation was triggered."""
-        if call_id in self._active_calls:
-            self._active_calls[call_id].escalation_triggered = True
+        log = await self._get_call(call_id)
+        if log:
+            log.escalation_triggered = True
+            await self._save_call(log)
 
     async def end_call(self, call_id: str, outcome: str = "completed",
                  outcome_detail: str = "", hang_up_state: Optional[str] = None):
         """End and persist a call log."""
-        if call_id not in self._active_calls:
+        log = await self._get_call(call_id)
+        if not log:
             return None
 
-        log = self._active_calls[call_id]
         log.ended_at = datetime.now().isoformat()
         log.outcome = outcome
         log.outcome_detail = outcome_detail
@@ -161,11 +183,12 @@ class CallLogger:
         # Persist to DB
         await self._persist(log)
 
-        # Remove from active
-        del self._active_calls[call_id]
+        # Remove from active Redis hash
+        r = get_redis()
+        await r.hdel(self.REDIS_KEY, call_id)
         logger.info(f"📊 Call logged: {call_id} | {outcome} | {log.duration_seconds}s | {log.total_turns} turns")
         
-        live_monitor.emit("call_ended", {
+        await live_monitor.emit("call_ended", {
             "call_id": call_id,
             "duration_seconds": log.duration_seconds,
             "outcome": outcome,
@@ -189,26 +212,34 @@ class CallLogger:
         """Write call log to DB."""
         await db_persist_call(log.model_dump(), log.tenant_id)
 
-    def get_active_call(self, call_id: str) -> Optional[CallLog]:
+    async def get_active_call(self, call_id: str) -> Optional[CallLog]:
         """Get a single active call log by ID."""
-        return self._active_calls.get(call_id)
+        return await self._get_call(call_id)
 
-    def get_active_calls(self, tenant_id: str = None) -> list[dict]:
+    async def get_active_calls(self, tenant_id: str = None) -> list[dict]:
         """Get active call summaries, optionally filtered by tenant."""
-        return [
-            {
+        r = get_redis()
+        data = await r.hgetall(self.REDIS_KEY)
+        results = []
+        now = datetime.now()
+        
+        for k, v in data.items():
+            log = CallLog.model_validate_json(v)
+            if tenant_id and log.tenant_id != tenant_id:
+                continue
+                
+            results.append({
                 "call_id": log.call_id,
                 "agent_id": log.agent_id,
                 "tenant_id": log.tenant_id,
                 "business_type": log.business_type,
                 "started_at": log.started_at,
-                "duration_seconds": int((datetime.now() - datetime.fromisoformat(log.started_at)).total_seconds()),
+                "duration_seconds": int((now - datetime.fromisoformat(log.started_at)).total_seconds()),
                 "current_state": log.states_visited[-1] if log.states_visited else "unknown",
                 "total_turns": len([t for t in log.transcript if t["role"] == "user"]),
-            }
-            for log in self._active_calls.values()
-            if tenant_id is None or log.tenant_id == tenant_id
-        ]
+            })
+            
+        return results
 
     async def get_calls(self, tenant_id: str, days: int = 7, agent_id: Optional[str] = None,
                   business_type: Optional[str] = None) -> list[CallLog]:

@@ -141,7 +141,7 @@
   - [x] Update settings UI labels
   - [x] Update tests (71 passed, 0 failures)
   - [ ] ⏸️ **PAUSED:** Live call verification (awaiting business email/card for Telnyx account)
-- [ ] **CallLogger scaling:** Migrate `_active_calls` to Redis Pub/Sub for multi-worker support
+- [x] **CallLogger scaling:** Migrate `_active_calls` to Redis Pub/Sub for multi-worker support
 - [ ] **Default agent tenant fix:** Map incoming phone numbers → tenants for calls without `agent_id`
 - [x] **Webhooks & API Keys:** Generate API keys and configure webhook URLs to receive post-call webhooks containing transcripts and variable extractions.
 - [ ] **Custom Vocabulary / Pronunciation:** Configure STT adaptation rules and phonetic TTS spellings for tricky industry acronyms/names.

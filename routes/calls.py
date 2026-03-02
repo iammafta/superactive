@@ -36,7 +36,7 @@ async def api_get_calls(
 async def api_get_active_calls(user: UserContext = Depends(get_current_user)):
     """Get currently active calls (for live dashboard)."""
     # Filter active calls by tenant
-    all_active = call_logger.get_active_calls()
+    all_active = await call_logger.get_active_calls()
     return [c for c in all_active if c.get("tenant_id") == user.tenant_id]
 
 
@@ -66,7 +66,7 @@ async def api_takeover_call(
     user: UserContext = Depends(get_current_user),
 ):
     """Bridge an active AI call to a human operator."""
-    active_calls = call_logger.get_active_calls()
+    active_calls = await call_logger.get_active_calls()
     call_info = next((c for c in active_calls if c["call_id"] == call_id and c["tenant_id"] == user.tenant_id), None)
     
     if not call_info:

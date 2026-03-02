@@ -33,7 +33,7 @@ async def monitor_endpoint(websocket: WebSocket, token: str = Query(default=None
     await live_monitor.connect(websocket, tenant_id=tenant_id)
     
     # On connect, send the current list of active calls (filtered by tenant)
-    active_calls = call_logger.get_active_calls(tenant_id=tenant_id)
+    active_calls = await call_logger.get_active_calls(tenant_id=tenant_id)
     await websocket.send_text(json.dumps({
         "type": "active_calls_update",
         "call_id": None,
@@ -51,7 +51,7 @@ async def monitor_endpoint(websocket: WebSocket, token: str = Query(default=None
                 if action == "subscribe" and call_id:
                     live_monitor.subscribe(websocket, call_id)
                     # Send current transcript and state for this call
-                    log = call_logger.get_active_call(call_id)
+                    log = await call_logger.get_active_call(call_id)
                     if log and log.tenant_id == tenant_id:
                         await websocket.send_text(json.dumps({
                             "type": "transcript_history",

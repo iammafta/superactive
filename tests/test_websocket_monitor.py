@@ -6,7 +6,7 @@ from fastapi.websockets import WebSocketDisconnect
 from fastapi.testclient import TestClient
 
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch
 
 # Mock telemetry BEFORE importing server to prevent GCP 403 errors during testing
 sys.modules['telemetry'] = MagicMock()
@@ -21,6 +21,12 @@ client = TestClient(app)
 def mock_ws_auth():
     with patch("routes.monitor.verify_ws_ticket", side_effect=lambda token: "test_tenant" if token == "valid_dummy_ticket" else None):
         yield
+
+@pytest.fixture(autouse=True)
+def mock_redis():
+    """Mock out Redis dependency by mocking CallLogger calls."""
+    call_logger.get_active_calls = AsyncMock(return_value=[])
+    yield
 
 @pytest.fixture
 def valid_ws_token():
@@ -66,7 +72,7 @@ def test_ws_call_subscription(valid_ws_token):
             states_visited=["greeting"],
             started_at=datetime.utcnow().isoformat()
         )
-        call_logger.get_active_call = MagicMock(return_value=dummy_log)
+        call_logger.get_active_call = AsyncMock(return_value=dummy_log)
 
         websocket.send_json({"action": "subscribe", "call_id": call_id})
         
@@ -85,7 +91,7 @@ def test_ws_broadcast_frustration(valid_ws_token):
         # Must run in new event loop since we are in sync test
         loop = asyncio.new_event_loop()
         try:
-            loop.run_until_complete(live_monitor.broadcast_event("frustration", test_data, tenant_id="test_tenant"))
+            loop.run_until_complete(live_monitor._send_to_websockets("frustration", test_data, tenant_id="test_tenant"))
         finally:
             loop.close()
         
