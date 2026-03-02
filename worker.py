@@ -19,8 +19,10 @@ init_telemetry("superactive-worker")
 # Import your database and telephony logic
 from db import (
     init_db, get_pool,
-    db_load_agent, db_load_campaign, db_update_contact_by_index, db_get_tenant
+    db_load_agent, db_load_campaign, db_update_contact_by_index, db_get_tenant,
+    get_telephony_credentials,
 )
+from telephony_provider import get_provider
 # Note: In a full refactor, we would extract the dial logic from CampaignDialer into here.
 # For now, we stub the worker task to show how it plugs in.
 
@@ -51,7 +53,7 @@ async def shutdown(ctx):
 
 async def dial_contact_task(ctx, campaign_id: str, tenant_id: str, contact_index: int, phone: str):
     """
-    Task picked up by the worker to dial a single contact.
+    Task picked up by the worker to dial a single contact via Telnyx.
     """
     logger.info(f"📞 Task processing: dial_contact (campaign={campaign_id}, index={contact_index}, phone={phone})")
     
@@ -70,19 +72,43 @@ async def dial_contact_task(ctx, campaign_id: str, tenant_id: str, contact_index
         
     # 2. Mark contact as dialing
     await db_update_contact_by_index(campaign_id, contact_index, status="dialing")
-    
-    # 3. Perform Twilio dial (Stubbed here. Pull logic from CampaignDialer.make_call)
-    logger.info(f"TwiML generated. Initiating call via Twilio to {phone}...")
-    
-    # Simulate API call latency
-    await asyncio.sleep(1) 
-    
-    # 4. Mark success / save SID
-    call_sid = f"CA_mock_{os.urandom(4).hex()}"
-    await db_update_contact_by_index(campaign_id, contact_index, status="called", call_sid=call_sid)
-    
-    logger.info(f"✅ Call initiated successfully. SID: {call_sid}")
-    return True
+    # 3. Perform Dial via TelephonyProvider
+    try:
+        creds_wrapper = await get_telephony_credentials(tenant_id)
+        host = os.getenv("PUBLIC_URL", "")
+        agent_id = campaign["agent_id"]
+        
+        provider_name = creds_wrapper.get("provider", "telnyx")
+        backup_name = creds_wrapper.get("backup_provider", "")
+        
+        provider = get_provider(provider_name)
+        creds = creds_wrapper.get(provider_name, {})
+        webhook_url = f"{host}/incoming-call/{provider_name}?agent_id={agent_id}&outbound=1"
+        
+        call_sid = None
+        try:
+            call_sid = await provider.make_outbound_call(phone, creds, webhook_url)
+        except Exception as e:
+            logger.error(f"Worker primary provider ({provider_name}) failed: {e}")
+            if backup_name:
+                logger.warning(f"🔄 Worker failing over to backup provider: {backup_name}")
+                backup_provider = get_provider(backup_name)
+                backup_creds = creds_wrapper.get(backup_name, {})
+                backup_webhook = f"{host}/incoming-call/{backup_name}?agent_id={agent_id}&outbound=1"
+                call_sid = await backup_provider.make_outbound_call(phone, backup_creds, backup_webhook)
+                
+        if not call_sid:
+            raise Exception("All telephony providers failed")
+
+        # 4. Mark success / save SID
+        await db_update_contact_by_index(campaign_id, contact_index, status="called", call_sid=call_sid)
+        logger.info(f"✅ Call initiated successfully. SID: {call_sid}")
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Dial failed for {phone}: {e}")
+        await db_update_contact_by_index(campaign_id, contact_index, status="failed")
+        return False
 
 
 # Worker Configuration

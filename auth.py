@@ -10,6 +10,7 @@ from the Authorization header on every protected endpoint.
 """
 
 import hashlib
+import hmac
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -84,7 +85,7 @@ def verify_password(password: str, stored_hash: str) -> bool:
         salt = bytes.fromhex(salt_hex)
         expected = bytes.fromhex(hash_hex)
         actual = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, _PBKDF2_ITERATIONS)
-        return actual == expected
+        return hmac.compare_digest(actual, expected)
     except (ValueError, AttributeError):
         return False
 

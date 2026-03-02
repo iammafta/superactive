@@ -17,7 +17,7 @@ from loguru import logger
 from pipecat.services.llm_service import FunctionCallParams
 
 from agent_config import AgentConfig
-from db import db_log_lead, db_lookup_client, get_twilio_credentials
+from db import db_log_lead, db_lookup_client, get_telephony_credentials
 
 
 # ── Tool Definitions (Gemini function declaration format) ─────────────
@@ -248,29 +248,24 @@ async def handle_check_availability(params: FunctionCallParams, agent_config: Op
 
 
 async def handle_transfer_to_human(params: FunctionCallParams, agent_config: Optional[AgentConfig] = None, call_sid: Optional[str] = None):
-    """Transfer to human via Twilio call redirect, or log if no transfer number configured."""
+    """Transfer to human via Telnyx call control API, or log if no transfer number configured."""
     args = params.arguments
     logger.info(f"🔄 Transfer requested: {args}")
 
     transfer_number = os.getenv("TRANSFER_PHONE_NUMBER", "")
 
     if transfer_number and call_sid:
-        # Real Twilio transfer — redirect the active call to the human's number
+        # Real Telnyx transfer — use call control API with per-request Bearer auth
         try:
-            from twilio.rest import Client
-            creds = await get_twilio_credentials(agent_config.tenant_id)
-            client = Client(
-                creds["account_sid"],
-                creds["auth_token"],
-            )
-            # Update the live call with TwiML that dials the human
-            from xml.sax.saxutils import escape as _xml_esc
-            safe_number = _xml_esc(transfer_number, {'"': '&quot;', "'": '&apos;'})
-            twiml = (
-                f'<Response><Say>Connecting you to a team member now. Please hold.</Say>'
-                f'<Dial>{safe_number}</Dial></Response>'
-            )
-            client.calls(call_sid).update(twiml=twiml)
+            creds_wrapper = await get_telephony_credentials(agent_config.tenant_id)
+            creds = creds_wrapper.get("telnyx", {})
+            async with httpx.AsyncClient() as http:
+                resp = await http.post(
+                    f"https://api.telnyx.com/v2/calls/{call_sid}/actions/transfer",
+                    headers={"Authorization": f"Bearer {creds.get('api_key', '')}"},
+                    json={"to": transfer_number},
+                )
+                resp.raise_for_status()
             result = {
                 "status": "transferred",
                 "reason": args.get("reason", "Caller request"),
@@ -298,32 +293,33 @@ async def handle_transfer_to_human(params: FunctionCallParams, agent_config: Opt
 
 
 async def handle_send_followup_sms(params: FunctionCallParams, agent_config: Optional[AgentConfig] = None):
-    """Send follow-up SMS via Twilio."""
+    """Send follow-up SMS via Telnyx Messaging API."""
     args = params.arguments
     logger.info(f"📱 Sending SMS to {args.get('phone', 'unknown')}")
 
-    # In production, this calls Twilio SMS API
     try:
-        from twilio.rest import Client
         tenant_id = agent_config.tenant_id if agent_config else None
         if tenant_id:
-            creds = await get_twilio_credentials(tenant_id)
+            creds_wrapper = await get_telephony_credentials(tenant_id)
+            creds = creds_wrapper.get("telnyx", {})
         else:
             creds = {
-                "account_sid": os.getenv("TWILIO_ACCOUNT_SID", ""),
-                "auth_token": os.getenv("TWILIO_AUTH_TOKEN", ""),
-                "phone_number": os.getenv("TWILIO_PHONE_NUMBER", ""),
+                "api_key": os.getenv("TELNYX_API_KEY", ""),
+                "phone_number": os.getenv("TELNYX_PHONE_NUMBER", ""),
             }
-        client = Client(
-            creds["account_sid"],
-            creds["auth_token"],
-        )
-        message = client.messages.create(
-            body=args["message"],
-            from_=creds["phone_number"],
-            to=args["phone"],
-        )
-        result = {"status": "sent", "sid": message.sid}
+        async with httpx.AsyncClient() as http:
+            resp = await http.post(
+                "https://api.telnyx.com/v2/messages",
+                headers={"Authorization": f"Bearer {creds.get('api_key', '')}"},
+                json={
+                    "from": creds.get("phone_number", ""),
+                    "to": args["phone"],
+                    "text": args["message"],
+                },
+            )
+            resp.raise_for_status()
+            msg_data = resp.json().get("data", {})
+        result = {"status": "sent", "sid": msg_data.get("id", "unknown")}
     except Exception as e:
         logger.error(f"SMS failed: {e}")
         result = {"status": "queued", "message": "SMS will be sent after the call."}

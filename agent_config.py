@@ -2,7 +2,7 @@
 Superactive — Agent Configuration System
 
 Pydantic models for config-driven agents.
-Persisted in SQLite via db.py.
+Persisted in PostgreSQL via db.py.
 """
 
 import json

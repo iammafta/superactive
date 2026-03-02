@@ -171,7 +171,18 @@ class CallLogger:
             "outcome": outcome,
             "total_turns": log.total_turns
         }, tenant_id=log.tenant_id)
-        
+
+        # Dispatch Post-Call Webhook (in background)
+        tenant = await db_get_tenant(log.tenant_id)
+        if tenant and tenant.get("webhook_url") and tenant.get("api_key"):
+            asyncio.create_task(
+                dispatch_post_call_webhook(
+                    webhook_url=tenant["webhook_url"],
+                    api_key=tenant["api_key"],
+                    call_data=log.model_dump()
+                )
+            )
+
         return log
 
     async def _persist(self, log: CallLog):

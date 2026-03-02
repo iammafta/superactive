@@ -136,9 +136,18 @@ export async function saveSettings(data: {
     business_name?: string;
     owner_email?: string;
     public_url?: string;
-    twilio_sid?: string;
-    twilio_token?: string;
+    telephony_provider?: string;
+    telnyx_api_key?: string;
+    telnyx_connection_id?: string;
+    telnyx_phone?: string;
+    twilio_account_sid?: string;
+    twilio_auth_token?: string;
     twilio_phone?: string;
+    webhook_url?: string;
 }) {
     return mutate(`${API_BASE_URL}/settings`, "PUT", data);
+}
+
+export async function rollApiKey() {
+    return mutate(`${API_BASE_URL}/settings/api-key/roll`, "POST");
 }

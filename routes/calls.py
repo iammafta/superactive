@@ -10,7 +10,7 @@ from loguru import logger
 
 from call_logger import call_logger
 from auth import get_current_user, UserContext
-from db import get_twilio_credentials
+from db import get_telephony_credentials
 
 router = APIRouter(prefix="/api", tags=["calls"])
 
@@ -73,23 +73,19 @@ async def api_takeover_call(
         raise HTTPException(status_code=404, detail="Call not found or not currently active.")
         
     try:
-        from twilio.rest import Client
-        creds = await get_twilio_credentials(user.tenant_id)
-        client = Client(
-            creds["account_sid"],
-            creds["auth_token"],
-        )
+        import httpx
+        creds_wrapper = await get_telephony_credentials(user.tenant_id)
+        creds = creds_wrapper.get("telnyx", {})
+        human_number = os.getenv("TAKEOVER_PHONE_NUMBER", os.getenv("TELNYX_PHONE_NUMBER", ""))
         
-        human_number = os.getenv("TAKEOVER_PHONE_NUMBER", os.getenv("TWILIO_PHONE_NUMBER", ""))
+        async with httpx.AsyncClient() as http:
+            await http.post(
+                f"https://api.telnyx.com/v2/calls/{call_id}/actions/transfer",
+                headers={"Authorization": f"Bearer {creds.get('api_key', '')}"},
+                json={"to": human_number},
+            )
         
-        twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>Transferring you to a live agent, please hold.</Say>
-    <Dial>{human_number}</Dial>
-</Response>"""
-        
-        client.calls(call_id).update(twiml=twiml)
-        logger.info(f"🚨 Call Takeover initiated for {call_id}: bridged to {human_number}")
+        logger.info(f"🚨 Call Takeover initiated for {call_id}: transferred to {human_number}")
         
         from live_monitor import live_monitor
         live_monitor.emit("takeover_initiated", {"call_id": call_id, "human_number": human_number}, call_id=call_id)

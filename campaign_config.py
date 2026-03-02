@@ -3,7 +3,7 @@ Superactive — Campaign Configuration System
 
 Pydantic models for batch outbound calling campaigns.
 Each campaign links to an agent config and contains a list of contacts to dial.
-Persisted in SQLite via db.py.
+Persisted in PostgreSQL via db.py.
 """
 
 import json

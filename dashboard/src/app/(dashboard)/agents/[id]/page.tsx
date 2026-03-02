@@ -22,7 +22,7 @@ const ALL_TOOLS = [
     { id: "book_appointment", label: "Book Appointment", icon: "📅", desc: "Schedule appointments via calendar" },
     { id: "check_availability", label: "Check Availability", icon: "📋", desc: "Query open time slots" },
     { id: "transfer_to_human", label: "Transfer to Human", icon: "🔄", desc: "Warm transfer to live agent" },
-    { id: "send_followup_sms", label: "Send Follow-up SMS", icon: "📱", desc: "Send SMS via Twilio" },
+    { id: "send_followup_sms", label: "Send Follow-up SMS", icon: "📱", desc: "Send SMS via Telnyx" },
     { id: "log_lead", label: "Log Lead", icon: "📝", desc: "Save lead for follow-up" },
     { id: "lookup_client", label: "Lookup Client", icon: "🔍", desc: "Check returning caller" },
     { id: "call_business_api", label: "Business API", icon: "🌐", desc: "Query custom webhook" },

@@ -30,7 +30,6 @@ logging.basicConfig(level=logging.INFO)
 from telemetry import init_telemetry
 init_telemetry("superactive-backend")
 
-from db import init_db
 from routes import all_routers
 from rate_limit import limiter
 

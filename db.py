@@ -38,9 +38,16 @@ CREATE TABLE IF NOT EXISTS tenants (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
-    twilio_sid TEXT DEFAULT '',
-    twilio_token TEXT DEFAULT '',
+    telephony_provider TEXT DEFAULT 'telnyx',
+    backup_provider TEXT DEFAULT '',
+    telnyx_api_key TEXT DEFAULT '',
+    telnyx_connection_id TEXT DEFAULT '',
+    telnyx_phone TEXT DEFAULT '',
+    twilio_account_sid TEXT DEFAULT '',
+    twilio_auth_token TEXT DEFAULT '',
     twilio_phone TEXT DEFAULT '',
+    api_key TEXT UNIQUE,
+    webhook_url TEXT DEFAULT '',
     public_url TEXT DEFAULT '',
     plan TEXT DEFAULT 'starter',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -211,7 +218,13 @@ async def db_get_tenant(tenant_id: str) -> Optional[dict]:
         return dict(row) if row else None
 
 
-_TENANT_UPDATABLE = {"name", "email", "public_url", "plan", "twilio_sid", "twilio_token", "twilio_phone"}
+_TENANT_UPDATABLE = {
+    "name", "email", "public_url", "plan", 
+    "telephony_provider", "backup_provider",
+    "telnyx_api_key", "telnyx_connection_id", "telnyx_phone",
+    "twilio_account_sid", "twilio_auth_token", "twilio_phone",
+    "webhook_url",
+}
 
 async def db_update_tenant(tenant_id: str, **fields) -> bool:
     safe_fields = {k: v for k, v in fields.items() if k in _TENANT_UPDATABLE}
@@ -230,13 +243,24 @@ async def db_update_tenant(tenant_id: str, **fields) -> bool:
         return res.endswith("1")  # Returns something like 'UPDATE 1'
 
 
-async def get_twilio_credentials(tenant_id: str) -> dict:
-    """Get Twilio credentials for a tenant (DB-first, env fallback)."""
+async def get_telephony_credentials(tenant_id: str) -> dict:
+    """Get telephony credentials for a tenant, including primary provider."""
     tenant = await db_get_tenant(tenant_id)
+    t_dict = tenant or {}
+    
     return {
-        "account_sid": (tenant or {}).get("twilio_sid") or os.getenv("TWILIO_ACCOUNT_SID", ""),
-        "auth_token": (tenant or {}).get("twilio_token") or os.getenv("TWILIO_AUTH_TOKEN", ""),
-        "phone_number": (tenant or {}).get("twilio_phone") or os.getenv("TWILIO_PHONE_NUMBER", ""),
+        "provider": t_dict.get("telephony_provider") or "telnyx",
+        "backup_provider": t_dict.get("backup_provider") or "",
+        "telnyx": {
+            "api_key": t_dict.get("telnyx_api_key") or os.getenv("TELNYX_API_KEY", ""),
+            "connection_id": t_dict.get("telnyx_connection_id") or os.getenv("TELNYX_CONNECTION_ID", ""),
+            "phone_number": t_dict.get("telnyx_phone") or os.getenv("TELNYX_PHONE_NUMBER", ""),
+        },
+        "twilio": {
+            "account_sid": t_dict.get("twilio_account_sid") or os.getenv("TWILIO_ACCOUNT_SID", ""),
+            "auth_token": t_dict.get("twilio_auth_token") or os.getenv("TWILIO_AUTH_TOKEN", ""),
+            "phone_number": t_dict.get("twilio_phone") or os.getenv("TWILIO_PHONE_NUMBER", ""),
+        }
     }
 
 
@@ -457,12 +481,16 @@ async def db_load_campaign(campaign_id: str, tenant_id: str = None) -> Optional[
 async def db_list_campaigns(tenant_id: str) -> list[dict]:
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT * FROM campaigns WHERE tenant_id = $1 ORDER BY created_at DESC", tenant_id)
+        rows = await conn.fetch(
+            "SELECT c.*, COUNT(ct.id) AS contact_count "
+            "FROM campaigns c LEFT JOIN contacts ct ON c.id = ct.campaign_id "
+            "WHERE c.tenant_id = $1 GROUP BY c.id ORDER BY c.created_at DESC",
+            tenant_id
+        )
         campaigns = []
         for row in rows:
             c = _campaign_row_to_dict(row)
-            count_res = await conn.fetchval("SELECT COUNT(*) FROM contacts WHERE campaign_id = $1", c["id"])
-            c["total_contacts"] = count_res
+            c["total_contacts"] = row["contact_count"]
             campaigns.append(c)
         return campaigns
 
@@ -532,7 +560,7 @@ async def db_get_contacts(campaign_id: str) -> list[dict]:
         return results
 
 
-_CONTACT_UPDATABLE = {"phone", "name", "status", "extra", "call_sid", "attempt"}
+_CONTACT_UPDATABLE = {"phone", "name", "status", "extra", "call_sid", "attempt", "outcome"}
 
 async def db_update_contact(contact_id: int, **fields) -> bool:
     safe_fields = {k: v for k, v in fields.items() if k in _CONTACT_UPDATABLE}
@@ -807,3 +835,19 @@ async def db_lookup_client(phone: str, tenant_id: str) -> Optional[dict]:
             tenant_id, phone
         )
         return dict(row) if row else None
+
+
+# ── Webhooks & Integrations ─────────────────────────────────────────
+
+async def db_generate_api_key(tenant_id: str) -> str:
+    """Generate a new secure API key for a tenant and save it. Returns the cleartext key."""
+    import secrets
+    # Generate a secure 32-byte token, base64url encoded
+    raw_token = secrets.token_urlsafe(32)
+    api_key = f"sk_live_{raw_token}"
+    
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE tenants SET api_key = $1 WHERE id = $2", api_key, tenant_id)
+        
+    return api_key

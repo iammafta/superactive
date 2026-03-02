@@ -14,7 +14,6 @@ from loguru import logger
 from pydantic import BaseModel
 from urllib.parse import unquote
 from xml.sax.saxutils import escape as _xml_escape
-from twilio.request_validator import RequestValidator
 
 def xml_escape(s: str) -> str:
     """Escape a string for safe use inside an XML attribute value (double-quoted)."""
@@ -28,7 +27,7 @@ from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from pipecat.runner.utils import parse_telephony_websocket
-from pipecat.serializers.twilio import TwilioFrameSerializer
+from pipecat.serializers.telnyx import TelnyxFrameSerializer
 from pipecat.services.google.llm_vertex import GoogleVertexLLMService
 from pipecat.services.google.stt import GoogleSTTService
 from pipecat.services.google.tts import GoogleHttpTTSService
@@ -46,7 +45,8 @@ from state_machine import (
 from call_logger import call_logger
 import time
 from telemetry import get_meter, get_tracer
-from db import get_twilio_credentials
+from db import get_telephony_credentials
+from telephony_provider import get_provider
 from pipecat.frames.frames import AudioRawFrame, ErrorFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from opentelemetry.metrics import CallbackOptions, Observation
@@ -110,13 +110,11 @@ class TelemetryFrameProcessor(FrameProcessor):
                     stt_failure_counter.add(1)
                     span.set_attribute("error.type", "stt_failure")
                 
-        # Forward frame
-        await super().process_frame(frame, direction)
-        
         # Calculate lag across this processor step
         processing_time_ms = (time.time() - now) * 1000
         pipeline_lag_histogram.record(processing_time_ms, {"frame_type": type(frame).__name__})
         
+        # Forward frame (push_frame only — super().process_frame() would double-push)
         await self.push_frame(frame, direction)
 
 router = APIRouter(tags=["telephony"])
@@ -152,37 +150,15 @@ async def health():
 
 # ── Incoming Call Webhook ─────────────────────────────────────────────
 
+@router.api_route("/incoming-call/{provider_name}", methods=["GET", "POST"])
 @router.api_route("/incoming-call", methods=["GET", "POST"])
-async def incoming_call(request: Request):
-    """Handle incoming Twilio call — return TwiML to connect to WebSocket.
-    Passes agent_id via custom parameters if specified."""
-    # 1. Validate Twilio Signature
-    if os.getenv("TWILIO_VALIDATION", "true").lower() != "false":
-        auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
-        # Note: Incoming call webhook validation uses env-var token since
-        # we don't know the tenant yet at this point (no JWT context).
-        # Per-tenant validation would require the agent_id in the URL.
-        if auth_token:
-            validator = RequestValidator(auth_token)
-            signature = request.headers.get("X-Twilio-Signature", "")
-            
-            public_url = os.getenv("PUBLIC_URL", "")
-            if public_url:
-                url = f"{public_url.rstrip('/')}{request.url.path}"
-                if request.url.query:
-                    url += f"?{request.url.query}"
-            else:
-                url = str(request.url)
-            
-            if request.method == "POST":
-                form_data = await request.form()
-                params = dict(form_data)
-            else:
-                params = {}
-                
-            if not validator.validate(url, params, signature):
-                logger.warning(f"🚨 Invalid Twilio signature for URL: {url}")
-                raise HTTPException(status_code=403, detail="Invalid Twilio signature")
+async def incoming_call(request: Request, provider_name: str = "telnyx"):
+    """Handle incoming call webhook — return TwiML to connect to WebSocket."""
+    provider = get_provider(provider_name)
+    body = await request.body()
+    
+    if not provider.validate_webhook(request, body):
+        raise HTTPException(status_code=403, detail=f"Invalid {provider_name} signature")
 
     public_url = os.getenv("PUBLIC_URL", "")
     if public_url:
@@ -278,9 +254,19 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Failed to init VAD, continuing without: {e}")
 
-    # 3. Transport — handles Twilio's µ-law audio format
-    # Resolve per-tenant Twilio credentials
-    twilio_creds = await get_twilio_credentials(agent_config.tenant_id)
+    # 3. Transport — handles Telnyx's audio format
+    # 3. Transport — handles audio format dynamically per provider
+    creds_wrapper = await get_telephony_credentials(agent_config.tenant_id)
+    
+    # We look at custom_params to see which provider called us, otherwise default
+    provider_name = custom_params.get("provider") or creds_wrapper.get("provider", "telnyx")
+    provider = get_provider(provider_name)
+    
+    # Extract the inner credentials dict for the active provider
+    creds = creds_wrapper.get(provider_name, {})
+    
+    serializer = provider.get_frame_serializer(stream_sid, call_sid, creds)
+    
     transport = FastAPIWebsocketTransport(
         websocket=websocket,
         params=FastAPIWebsocketParams(
@@ -289,13 +275,7 @@ async def websocket_endpoint(websocket: WebSocket):
             add_wav_header=False,
             vad_enabled=True if vad else False,
             vad_analyzer=vad,
-            serializer=TwilioFrameSerializer(
-                stream_sid=stream_sid,
-                call_sid=call_sid,
-                account_sid=twilio_creds["account_sid"],
-                auth_token=twilio_creds["auth_token"],
-                params=TwilioFrameSerializer.InputParams(auto_hang_up=True),
-            ),
+            serializer=serializer,
         ),
     )
 
@@ -491,30 +471,36 @@ async def api_outbound_call(req: OutboundCallRequest, user: UserContext = Depend
     to_number = _validate_e164(req.to)
 
     try:
-        from twilio.rest import Client
-        creds = await get_twilio_credentials(user.tenant_id)
-        client = Client(
-            creds["account_sid"],
-            creds["auth_token"],
-        )
-
+        creds_wrapper = await get_telephony_credentials(user.tenant_id)
         host = os.getenv("PUBLIC_URL", f"https://localhost:{PORT}")
+        
+        provider_name = creds_wrapper.get("provider", "telnyx")
+        backup_name = creds_wrapper.get("backup_provider", "")
+        
+        provider = get_provider(provider_name)
+        creds = creds_wrapper.get(provider_name, {})
+        webhook_url = f"{host}/incoming-call/{provider_name}?agent_id={req.agent_id}&outbound=1"
+        
+        call_sid = None
+        try:
+            call_sid = await provider.make_outbound_call(to_number, creds, webhook_url)
+        except Exception as e:
+            logger.error(f"Primary provider ({provider_name}) failed: {e}")
+            if backup_name:
+                logger.warning(f"🔄 Failing over to backup provider: {backup_name}")
+                backup_provider = get_provider(backup_name)
+                backup_creds = creds_wrapper.get(backup_name, {})
+                backup_webhook = f"{host}/incoming-call/{backup_name}?agent_id={req.agent_id}&outbound=1"
+                call_sid = await backup_provider.make_outbound_call(to_number, backup_creds, backup_webhook)
+                
+        if not call_sid:
+            raise HTTPException(status_code=500, detail="All telephony providers failed to dispatch call")
 
-        from_number = creds["phone_number"]
-        if from_number and not from_number.startswith("+"):
-            from_number = f"+{from_number}"
-
-        call = client.calls.create(
-            to=to_number,
-            from_=from_number,
-            url=f"{host}/incoming-call?agent_id={req.agent_id}&outbound=1",
-        )
-
-        logger.info(f"📤 Outbound call initiated: {call.sid} → {req.to} (agent: {req.agent_id})")
+        logger.info(f"📤 Outbound call initiated: {call_sid} → {req.to} (agent: {req.agent_id})")
 
         # Immediately register with call_logger so Live Monitor picks it up
         call_logger.start_call(
-            call_id=call.sid,
+            call_id=call_sid,
             agent_id=req.agent_id,
             business_type=agent.business_type or "outbound",
             tenant_id=user.tenant_id,
@@ -522,10 +508,13 @@ async def api_outbound_call(req: OutboundCallRequest, user: UserContext = Depend
 
         return {
             "status": "initiated",
-            "call_sid": call.sid,
+            "call_sid": call_sid,
             "to": req.to,
             "agent_id": req.agent_id,
         }
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Outbound call failed: {e.response.text}")
+        raise HTTPException(status_code=500, detail=f"Telnyx API error: {e.response.text}")
     except Exception as e:
         logger.error(f"Outbound call failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))

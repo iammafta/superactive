@@ -21,6 +21,19 @@ async def api_list_agents(user: UserContext = Depends(get_current_user)):
     return [a.model_dump() for a in agents]
 
 
+@router.get("/tools")
+async def api_list_tools(user: UserContext = Depends(get_current_user)):
+    """List all available tools (for dashboard tool picker)."""
+    return {
+        name: {
+            "name": name,
+            "description": defn["description"],
+            "parameters": list(defn["parameters"]["properties"].keys()),
+        }
+        for name, defn in TOOL_DEFINITIONS.items()
+    }
+
+
 @router.get("/{agent_id}")
 async def api_get_agent(agent_id: str, user: UserContext = Depends(get_current_user)):
     """Get a specific agent config."""
@@ -73,14 +86,3 @@ async def api_delete_agent(agent_id: str, user: UserContext = Depends(get_curren
     raise HTTPException(status_code=404, detail="Agent not found")
 
 
-@router.get("/tools")
-async def api_list_tools(user: UserContext = Depends(get_current_user)):
-    """List all available tools (for dashboard tool picker)."""
-    return {
-        name: {
-            "name": name,
-            "description": defn["description"],
-            "parameters": list(defn["parameters"]["properties"].keys()),
-        }
-        for name, defn in TOOL_DEFINITIONS.items()
-    }
