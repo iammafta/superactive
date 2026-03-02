@@ -264,6 +264,43 @@ async def get_telephony_credentials(tenant_id: str) -> dict:
     }
 
 
+async def db_get_tenant_and_agent_by_phone(phone: str, provider_name: str) -> Optional[dict]:
+    """
+    Look up a tenant by their inbound phone number and return their default inbound agent.
+    Matches either telnyx_phone or twilio_phone based on the provider.
+    """
+    if not phone:
+        return None
+        
+    # Ensure phone has + prefix for DB comparison
+    if not phone.startswith("+"):
+        phone = f"+{phone}"
+
+    if provider_name.lower() == "twilio":
+        column = "twilio_phone"
+    else:
+        column = "telnyx_phone"
+
+    query = f"""
+        SELECT 
+            t.id as tenant_id,
+            a.id as agent_id
+        FROM tenants t
+        JOIN agents a ON t.id = a.tenant_id
+        WHERE t.{column} = $1
+          AND a.agent_type = 'inbound'
+          AND a.active = 1
+        LIMIT 1
+    """
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(query, phone)
+        if row:
+            return dict(row)
+        return None
+
+
 # ── User CRUD ────────────────────────────────────────────────────────
 
 async def db_create_user(email: str, password_hash: str, tenant_id: str, role: str = "admin") -> dict:

@@ -26,6 +26,11 @@ class TelephonyProvider(ABC):
         pass
         
     @abstractmethod
+    def get_dialed_number(self, request: Request, body_bytes: bytes) -> Optional[str]:
+        """Extract the 'To' dialed number from the webhook body to map to a tenant."""
+        pass
+        
+    @abstractmethod
     async def make_outbound_call(self, to: str, creds: Dict[str, str], webhook_url: str) -> Optional[str]:
         """Trigger an outbound call to a destination. Returns the Call SID on success, None on failure."""
         pass
@@ -58,6 +63,19 @@ class TelnyxProvider(TelephonyProvider):
             api_key=creds.get("api_key", ""),
             params=TelnyxFrameSerializer.InputParams(auto_hang_up=True),
         )
+
+    def get_dialed_number(self, request: Request, body_bytes: bytes) -> Optional[str]:
+        """Parse the Telnyx JSON webhook payload for the dialed number."""
+        try:
+            import json
+            payload = json.loads(body_bytes)
+            # Depending on the event type, "to" is either top level or inside payload
+            if "data" in payload and "payload" in payload["data"]:
+                return payload["data"]["payload"].get("to")
+            return payload.get("to")
+        except Exception as e:
+            logger.warning(f"Failed to parse Telnyx dialed number: {e}")
+            return None
 
     async def make_outbound_call(self, to: str, creds: Dict[str, str], webhook_url: str) -> Optional[str]:
         api_key = creds.get("api_key")
@@ -103,6 +121,17 @@ class TwilioProvider(TelephonyProvider):
         return TwilioFrameSerializer(
             stream_sid=stream_sid,
         )
+
+    def get_dialed_number(self, request: Request, body_bytes: bytes) -> Optional[str]:
+        """Parse the Twilio form-urlencoded webhook payload for the dialed number."""
+        try:
+            from urllib.parse import parse_qs
+            form_data = parse_qs(body_bytes.decode("utf-8"))
+            to = form_data.get("To", [None])[0]
+            return to
+        except Exception as e:
+            logger.warning(f"Failed to parse Twilio dialed number: {e}")
+            return None
 
     async def make_outbound_call(self, to: str, creds: Dict[str, str], webhook_url: str) -> Optional[str]:
         account_sid = creds.get("account_sid")

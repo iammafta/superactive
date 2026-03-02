@@ -45,7 +45,7 @@ from state_machine import (
 from call_logger import call_logger
 import time
 from telemetry import get_meter, get_tracer
-from db import get_telephony_credentials
+from db import get_telephony_credentials, db_get_tenant_and_agent_by_phone
 from telephony_provider import get_provider
 from pipecat.frames.frames import AudioRawFrame, ErrorFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
@@ -174,6 +174,18 @@ async def incoming_call(request: Request, provider_name: str = "telnyx"):
     outbound = request.query_params.get("outbound", "")
     contact_name = request.query_params.get("contact_name", "")
     contact_extra = request.query_params.get("contact_extra", "")
+
+    # Map number -> Tenant/Agent if agent_id is missing (e.g. direct inbound dials)
+    if not agent_id:
+        dialed_number = provider.get_dialed_number(request, body)
+        if dialed_number:
+            logger.info(f"🔍 Direct dial detected for {dialed_number} via {provider_name}")
+            mapping = await db_get_tenant_and_agent_by_phone(dialed_number, provider_name)
+            if mapping:
+                agent_id = mapping["agent_id"]
+                logger.info(f"✅ Mapped direct dial {dialed_number} to agent {agent_id}")
+            else:
+                logger.warning(f"❌ Could not find tenant for dialed number {dialed_number}")
 
     param_tags = []
     if agent_id:

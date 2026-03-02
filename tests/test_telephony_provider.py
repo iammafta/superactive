@@ -74,3 +74,33 @@ async def test_get_provider_with_failover_no_backup(monkeypatch):
     
     assert len(providers) == 1
     assert isinstance(providers[0], TelnyxProvider)
+
+@pytest.mark.asyncio
+async def test_telnyx_get_dialed_number():
+    """Test extracting 'To' number from Telnyx JSON body."""
+    provider = TelnyxProvider()
+    request = AsyncMock()
+    
+    # Nested payload (Call Initiated event)
+    body1 = b'{"data": {"event_type": "call.initiated", "payload": {"to": "+15551234567"}}}'
+    assert provider.get_dialed_number(request, body1) == "+15551234567"
+    
+    # Flat payload (just in case)
+    body2 = b'{"to": "+15559876543"}'
+    assert provider.get_dialed_number(request, body2) == "+15559876543"
+    
+    # Invalid JSON
+    assert provider.get_dialed_number(request, b'not json') is None
+
+@pytest.mark.asyncio
+async def test_twilio_get_dialed_number():
+    """Test extracting 'To' number from Twilio url-encoded body."""
+    provider = TwilioProvider()
+    request = AsyncMock()
+    
+    body = b'CallSid=CS123&From=%2B15550001111&To=%2B15551234567&Direction=inbound'
+    assert provider.get_dialed_number(request, body) == "+15551234567"
+    
+    # Missing To
+    body2 = b'CallSid=CS123&From=%2B15550001111'
+    assert provider.get_dialed_number(request, body2) is None
