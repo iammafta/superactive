@@ -144,7 +144,6 @@
 - [ ] **CallLogger scaling:** Migrate `_active_calls` to Redis Pub/Sub for multi-worker support
 - [ ] **Default agent tenant fix:** Map incoming phone numbers → tenants for calls without `agent_id`
 - [x] **Webhooks & API Keys:** Generate API keys and configure webhook URLs to receive post-call webhooks containing transcripts and variable extractions.
-- [ ] **Developer / Testing Playground:** Split-pane UI to test Voice AI with real-time Pipecat logs, LLM prompts, and latency metrics before starting a campaign.
 - [ ] **Custom Vocabulary / Pronunciation:** Configure STT adaptation rules and phonetic TTS spellings for tricky industry acronyms/names.
 - [ ] **Human Handoff (Tool/State):** Telnyx call transfer integration to forward ongoing calls to a human agent when the AI cannot resolve the query.
 - [ ] **Post-Call Automations:** Simple rule-builder (e.g. `IF status == 'converted' THEN email sales`) integrated into the campaign flow.
@@ -163,3 +162,6 @@
 - [x] Update `telephony.py` to use `provider.get_frame_serializer()` and `provider.validate_webhook()`
 - [x] Update `worker.py` and `api_outbound_call` for automated outbound failover mapping
 - [x] Update Dashboard `settings/page.tsx` to handle provider selection and dynamic credentials
+
+### Very Low Priority / V2
+- [ ] **Developer / Testing Playground:** Split-pane UI to test Voice AI with real-time Pipecat logs, LLM prompts, and latency metrics before starting a campaign.
