@@ -103,9 +103,28 @@
 - [x] Display `hang_up_heatmap` data (already in API)
 
 ### Sprint 5: Settings & Integrations (SaaS Readiness) ✅
-- [x] Make Twilio credentials editable in UI (fields exist in DB)
+- [x] Make Telnyx credentials editable in UI (fields exist in DB)
 - [x] Remove "Configured via .env" messaging
-- [x] Add per-tenant Twilio credential management
+- [x] Add per-tenant Telnyx credential management
+
+---
+
+### Code Review Fixes (15 Findings) ✅
+- [x] **#1** `TelemetryFrameProcessor` double-push bug — removed duplicate `super().process_frame()` call
+- [x] **#2** Worker `dial_contact_task` stubbed — replaced with real Telnyx dialing via httpx
+- [x] **#3** `_CONTACT_UPDATABLE` missing `outcome` — added to whitelist
+- [x] **#4** Duplicate `init_db` import in `server.py` — removed top-level import
+- [x] **#5** Stale SQLite references — updated docstrings in `agent_config.py`, `campaign_config.py`
+- [x] **#6** `aiosqlite` dead dependency — removed from `requirements.txt`
+- [x] **#7** `docker-compose.yml` deprecated `version` key — removed
+- [x] **#8** Unescaped phone in TwiML — moot after Telnyx migration (JSON payloads)
+- [x] **#9** N+1 query in `db_list_campaigns` — rewritten with `LEFT JOIN`
+- [ ] **#10** `CallLogger` not process-safe — deferred (works in single-worker mode; needs Redis Pub/Sub for multi-worker)
+- [x] **#11** Stale `.bak` files — deleted
+- [x] **#12** Dockerfile creates `/app/data` for SQLite — removed
+- [x] **#13** Password hash `==` → `hmac.compare_digest` — fixed in `auth.py`
+- [ ] **#14** `get_default_agent()` lacks tenant context — deferred (works correctly when `agent_id` is provided, which is always the case in production)
+- [x] **#15** Route ordering in `agents.py` — moved `/tools` above `/{agent_id}`
 
 ---
 
@@ -115,13 +134,15 @@
 - [x] Fix end_call persistence race condition (asyncio.shield)
 - [x] Fix outbound calls not appearing in Live Monitor (immediate call_logger.start_call)
 - [x] Make call_logger.start_call idempotent (prevent duplicate events)
-- [ ] Migrate to Telnyx (plan reviewed — see implementation_plan.md v2)
-  - [ ] Switch TwilioFrameSerializer → TelnyxFrameSerializer (auto-hangup fix)
-  - [ ] Replace Twilio SDK with httpx + per-request Bearer auth (race condition fix)
-  - [ ] DB migration: rename twilio_* columns → telnyx_*
-  - [ ] Update settings UI labels
-  - [ ] Update tests
-  - [ ] Live call verification
+- [x] Migrate to Telnyx ✅
+  - [x] Switch TwilioFrameSerializer → TelnyxFrameSerializer
+  - [x] Replace Twilio SDK with httpx + per-request Bearer auth
+  - [x] DB migration: rename twilio_* columns → telnyx_*
+  - [x] Update settings UI labels
+  - [x] Update tests (71 passed, 0 failures)
+  - [ ] ⏸️ **PAUSED:** Live call verification (awaiting business email/card for Telnyx account)
+- [ ] **CallLogger scaling:** Migrate `_active_calls` to Redis Pub/Sub for multi-worker support
+- [ ] **Default agent tenant fix:** Map incoming phone numbers → tenants for calls without `agent_id`
 - [ ] **Webhooks & API Keys:** Generate API keys and configure webhook URLs to receive post-call webhooks containing transcripts and variable extractions.
 - [ ] **Developer / Testing Playground:** Split-pane UI to test Voice AI with real-time Pipecat logs, LLM prompts, and latency metrics before starting a campaign.
 - [ ] **Custom Vocabulary / Pronunciation:** Configure STT adaptation rules and phonetic TTS spellings for tricky industry acronyms/names.
@@ -135,3 +156,10 @@
 - [ ] Call recording storage (S3/GCS)
 - [ ] Accessibility (ARIA labels, keyboard nav)
 
+### Phase 8: Telephony Resilience (Multi-Provider Failover)
+- [x] Create `telephony_provider.py` abstraction layer (TelephonyProvider ABC)
+- [x] Implement `TelnyxProvider` and `TwilioProvider` adapters
+- [x] Update `db.py` to support `telephony_provider` and `twilio_*` credentials per tenant
+- [x] Update `telephony.py` to use `provider.get_frame_serializer()` and `provider.validate_webhook()`
+- [x] Update `worker.py` and `api_outbound_call` for automated outbound failover mapping
+- [x] Update Dashboard `settings/page.tsx` to handle provider selection and dynamic credentials
