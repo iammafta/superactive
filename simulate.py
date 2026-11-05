@@ -141,7 +141,7 @@ async def simulate_turn(agent: AgentConfig, messages: list[dict], state: Optiona
 
     clean, current = apply_model_tags(spoken, current, known)
     return {
-        "text": clean or "I didn\u0027t catch that. Could you say it once more?",
+        "text": clean or "I didn't catch that. Could you say it once more?",
         "state": current,
         "tool": last_tool,
         "tool_result": last_result,
