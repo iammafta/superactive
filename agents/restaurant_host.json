@@ -28,9 +28,88 @@
                 "customer_wants_a_table": "reservation_details"
             },
             "max_turns": 3
+        },
+        {
+            "name": "order_items",
+            "instructions": "Ask what they want, one dish at a time. Call get_item for each dish before you name a price or say it is available. If get_item says it is off, say so and offer only the alternative names.",
+            "transitions": {
+                "have_the_items": "quote",
+                "customer_wants_a_table": "reservation_details"
+            },
+            "max_turns": 6,
+            "required_info": ["items"]
+        },
+        {
+            "name": "quote",
+            "instructions": "Call price_order with the items and quantities. Read the total_cents it returns, in dollars. Do not add prices. If it refuses, go back to the items.",
+            "transitions": {
+                "total_accepted": "pickup_time",
+                "wants_to_change_items": "order_items"
+            },
+            "max_turns": 3
+        },
+        {
+            "name": "pickup_time",
+            "instructions": "Call pickup_windows for their date. Offer only the times it returns. If none are open, say so.",
+            "transitions": {
+                "time_chosen": "payment"
+            },
+            "max_turns": 3,
+            "required_info": ["pickup_time"]
+        },
+        {
+            "name": "payment",
+            "instructions": "Call hold_order with the items, the chosen time, their name, and their phone. Then call send_payment_link with the order id. Say the order is held until the expiry the tool returned. Do not say it is placed. If the text fails, say the text did not send.",
+            "transitions": {
+                "link_sent": "confirmed",
+                "could_not_hold": "pickup_time"
+            },
+            "max_turns": 4,
+            "required_info": ["name", "phone"]
+        },
+        {
+            "name": "confirmed",
+            "instructions": "Call order_status. Confirm the order only when the status is paid. Otherwise say the kitchen starts when payment lands, then say goodbye.",
+            "transitions": {},
+            "max_turns": 2
+        },
+        {
+            "name": "reservation_details",
+            "instructions": "Collect a table request one fact at a time: name, party size, date, and time. This is a table, not a paid takeout order.",
+            "transitions": {
+                "have_all_reservation_details": "booking"
+            },
+            "max_turns": 6,
+            "required_info": ["name", "party_size", "date", "time"]
+        },
+        {
+            "name": "booking",
+            "instructions": "Call book_appointment. If it returns not_booked, say the reservation book is not connected and offer a person. Do not invent a confirmation number.",
+            "transitions": {
+                "finished": "farewell"
+            },
+            "max_turns": 3
+        },
+        {
+            "name": "farewell",
+            "instructions": "Thank them and say goodbye. Do not confirm a table that was not booked.",
+            "transitions": {},
+            "max_turns": 2
+        },
+        {
+            "name": "escalation",
+            "instructions": "Offer to transfer them to a person.",
+            "transitions": {},
+            "max_turns": 2
         }
     ],
     "max_turns": 20,
     "max_duration_seconds": 240,
+    "escalation_triggers": [
+        "speak to manager",
+        "complaint",
+        "food poisoning",
+        "allergic reaction"
+    ],
     "active": true
 }
