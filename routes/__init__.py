@@ -12,6 +12,8 @@ from routes.health import router as health_router
 from routes.settings import router as settings_router
 from routes.telephony import router as telephony_router
 from routes.monitor import router as monitor_router
+from routes.menu import router as menu_router
+from routes.payments import router as payments_router
 
 all_routers = [
     health_router,
@@ -22,5 +24,6 @@ all_routers = [
     settings_router,
     telephony_router,
     monitor_router,
+    menu_router,
+    payments_router,
 ]
-
