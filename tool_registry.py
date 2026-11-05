@@ -7,6 +7,7 @@ registers only those tools with the LLM service.
 Persisted in SQLite via db.py.
 """
 
+import asyncio
 import os
 from datetime import datetime
 from typing import Optional
@@ -14,10 +15,20 @@ from typing import Optional
 import httpx
 from loguru import logger
 
+from pipecat.frames.frames import TTSSpeakFrame
 from pipecat.services.llm_service import FunctionCallParams
 
 from agent_config import AgentConfig
 from db import db_log_lead, db_lookup_client
+from orders import (
+    get_item,
+    hold_order,
+    order_status,
+    pickup_windows,
+    price_order,
+    send_payment_link,
+    send_sms,
+)
 
 
 # ── Tool Definitions (Gemini function declaration format) ─────────────
@@ -127,7 +138,151 @@ TOOL_DEFINITIONS = {
             "required": ["query"],
         },
     },
+    "get_item": {
+        "name": "get_item",
+        "description": "Look up one dish on this restaurant's menu. Returns the price in cents and whether it is available. Never guess a dish or a price.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Dish name the caller asked for"},
+            },
+            "required": ["name"],
+        },
+    },
+    "price_order": {
+        "name": "price_order",
+        "description": "Price the items and quantities from the menu. The total is computed for you. Do not add prices yourself.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "description": "Dishes to price",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "qty": {"type": "integer"},
+                        },
+                        "required": ["name", "qty"],
+                    },
+                },
+            },
+            "required": ["items"],
+        },
+    },
+    "pickup_windows": {
+        "name": "pickup_windows",
+        "description": "List open pickup times for a date. Offer only the times this returns.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "date": {"type": "string", "description": "YYYY-MM-DD, today, or tomorrow"},
+            },
+            "required": ["date"],
+        },
+    },
+    "hold_order": {
+        "name": "hold_order",
+        "description": "Hold a draft takeout order at a pickup time this system offered. This does not place the order.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "qty": {"type": "integer"},
+                        },
+                        "required": ["name", "qty"],
+                    },
+                },
+                "pickup_time": {"type": "string", "description": "A time label returned by pickup_windows"},
+                "date": {"type": "string", "description": "The same date passed to pickup_windows"},
+                "name": {"type": "string"},
+                "phone": {"type": "string"},
+            },
+            "required": ["items", "pickup_time"],
+        },
+    },
+    "send_payment_link": {
+        "name": "send_payment_link",
+        "description": "Text a payment link for a held order. Do not invent a URL. The order is not placed until payment lands.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "order_id": {"type": "string"},
+            },
+            "required": ["order_id"],
+        },
+    },
+    "order_status": {
+        "name": "order_status",
+        "description": "Read whether a held order is draft, link_sent, paid, or expired. Confirm the order only when status is paid.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "order_id": {"type": "string"},
+            },
+            "required": ["order_id"],
+        },
+    },
 }
+
+
+AGENT_CONTEXT_TOOLS = {
+    "book_appointment",
+    "check_availability",
+    "log_lead",
+    "lookup_client",
+    "get_item",
+    "price_order",
+    "pickup_windows",
+    "hold_order",
+    "send_payment_link",
+    "order_status",
+}
+
+
+class ToolFiller:
+    """Speak one short line only when a tool is still running after 400ms."""
+
+    def __init__(self):
+        self.task = None
+        self._job = None
+        self._token = 0
+
+    def bind(self, task) -> None:
+        self.task = task
+
+    def arm(self) -> None:
+        if self._job and not self._job.done():
+            return
+        self._token += 1
+        token = self._token
+        self._job = asyncio.create_task(self._speak(token))
+
+    def cancel(self) -> None:
+        self._token += 1
+        if self._job and not self._job.done():
+            self._job.cancel()
+        self._job = None
+
+    async def _speak(self, token: int) -> None:
+        try:
+            await asyncio.sleep(0.4)
+        except asyncio.CancelledError:
+            return
+        if token != self._token or self.task is None:
+            return
+        try:
+            await self.task.queue_frames([
+                TTSSpeakFrame(text="One second, I'll check that.", append_to_context=False)
+            ])
+        except Exception as exc:
+            logger.warning(f"Filler failed: {exc}")
 
 
 # ── Per-Call Helpers ───────────────────────────────────────────────────
@@ -194,22 +349,12 @@ async def handle_book_appointment(params: FunctionCallParams, agent_config: Opti
         await params.result_callback(webhook_result)
         return
 
-    # Smart fallback — realistic confirmation with details
-    import random
-    conf_num = random.randint(1000, 9999)
     result = {
-        "status": "booked",
-        "name": args.get("name", "Unknown"),
-        "date": args.get("date", "To be confirmed"),
-        "time": args.get("time", "To be confirmed"),
-        "reason": args.get("reason", "General"),
-        "confirmation": f"SA-{conf_num}",
-        "message": f"You're all set! Confirmation number {conf_num}.",
+        "booked": False,
+        "status": "not_booked",
+        "message": "The reservation book is not connected. Do not tell the caller they are booked.",
     }
-
-    # Also log locally as a lead
-    await _log_booking_locally(args, result["confirmation"], agent_config)
-    logger.info(f"✅ Appointment booked: {result['confirmation']}")
+    logger.info("Booking refused: no webhook")
     await params.result_callback(result)
 
 
@@ -224,26 +369,13 @@ async def handle_check_availability(params: FunctionCallParams, agent_config: Op
         await params.result_callback(webhook_result)
         return
 
-    # Smart fallback — date-aware slots that feel realistic
-    import random
-    requested_date = args.get("date", "")
-
-    # Generate plausible slots based on day context
-    morning_slots = ["9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM"]
-    afternoon_slots = ["1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM"]
-    all_slots = morning_slots + afternoon_slots
-
-    # Return 3-5 random slots (not always the same 4)
-    num_slots = random.randint(3, 5)
-    available_slots = sorted(random.sample(all_slots, min(num_slots, len(all_slots))))
-
-    date_display = requested_date or "the next available day"
     result = {
-        "available": True,
-        "date": date_display,
-        "slots": available_slots,
-        "message": f"We have {len(available_slots)} openings on {date_display}.",
+        "available": False,
+        "date": args.get("date", ""),
+        "slots": [],
+        "message": "No schedule is connected. Do not offer times.",
     }
+    logger.info("Availability refused: no webhook")
     await params.result_callback(result)
 
 
@@ -298,24 +430,51 @@ async def handle_send_followup_sms(params: FunctionCallParams):
     """Send follow-up SMS via Twilio."""
     args = params.arguments
     logger.info(f"📱 Sending SMS to {args.get('phone', 'unknown')}")
+    result = send_sms(args.get("phone", ""), args.get("message", ""))
+    await params.result_callback(result)
 
-    # In production, this calls Twilio SMS API
-    try:
-        from twilio.rest import Client
-        client = Client(
-            os.getenv("TWILIO_ACCOUNT_SID"),
-            os.getenv("TWILIO_AUTH_TOKEN"),
-        )
-        message = client.messages.create(
-            body=args["message"],
-            from_=os.getenv("TWILIO_PHONE_NUMBER"),
-            to=args["phone"],
-        )
-        result = {"status": "sent", "sid": message.sid}
-    except Exception as e:
-        logger.error(f"SMS failed: {e}")
-        result = {"status": "queued", "message": "SMS will be sent after the call."}
 
+def _tenant_id(agent_config: Optional[AgentConfig]) -> str:
+    return agent_config.tenant_id if agent_config else ""
+
+
+async def handle_get_item(params: FunctionCallParams, agent_config: Optional[AgentConfig] = None):
+    result = await get_item(_tenant_id(agent_config), params.arguments.get("name", ""))
+    await params.result_callback(result)
+
+
+async def handle_price_order(params: FunctionCallParams, agent_config: Optional[AgentConfig] = None):
+    result = await price_order(_tenant_id(agent_config), params.arguments.get("items") or [])
+    await params.result_callback(result)
+
+
+async def handle_pickup_windows(params: FunctionCallParams, agent_config: Optional[AgentConfig] = None):
+    result = await pickup_windows(_tenant_id(agent_config), params.arguments.get("date"))
+    public = {key: value for key, value in result.items() if key != "slot_keys"}
+    await params.result_callback(public)
+
+
+async def handle_hold_order(params: FunctionCallParams, agent_config: Optional[AgentConfig] = None):
+    args = params.arguments
+    result = await hold_order(
+        _tenant_id(agent_config),
+        args.get("items") or [],
+        args.get("pickup_time", ""),
+        name=args.get("name", ""),
+        phone=args.get("phone", ""),
+        agent_id=agent_config.id if agent_config else "",
+        day_text=args.get("date"),
+    )
+    await params.result_callback(result)
+
+
+async def handle_send_payment_link(params: FunctionCallParams, agent_config: Optional[AgentConfig] = None):
+    result = await send_payment_link(_tenant_id(agent_config), params.arguments.get("order_id", ""))
+    await params.result_callback(result)
+
+
+async def handle_order_status(params: FunctionCallParams, agent_config: Optional[AgentConfig] = None):
+    result = await order_status(_tenant_id(agent_config), params.arguments.get("order_id", ""))
     await params.result_callback(result)
 
 
@@ -474,8 +633,29 @@ TOOL_HANDLERS = {
     "log_lead": handle_log_lead,
     "lookup_client": handle_lookup_client,
     "tavily_search": handle_tavily_search,
+    "get_item": handle_get_item,
+    "price_order": handle_price_order,
+    "pickup_windows": handle_pickup_windows,
+    "hold_order": handle_hold_order,
+    "send_payment_link": handle_send_payment_link,
+    "order_status": handle_order_status,
     # call_business_api is special — needs agent_config closure
 }
+
+
+async def _dispatch_handler(handler, name, params, agent_config, call_sid, filler: Optional[ToolFiller]):
+    if filler is not None:
+        filler.arm()
+    try:
+        if name in AGENT_CONTEXT_TOOLS:
+            await handler(params, agent_config=agent_config)
+        elif name == "transfer_to_human":
+            await handler(params, agent_config=agent_config, call_sid=call_sid)
+        else:
+            await handler(params)
+    finally:
+        if filler is not None:
+            filler.cancel()
 
 
 # ── Registration ──────────────────────────────────────────────────────
@@ -491,7 +671,7 @@ def get_tools_for_agent(agent_config: AgentConfig) -> list[dict]:
     return tools
 
 
-def register_tools_for_agent(llm, agent_config: AgentConfig, call_id: str = None, call_logger=None, call_sid: str = None):
+def register_tools_for_agent(llm, agent_config: AgentConfig, call_id: str = None, call_logger=None, call_sid: str = None, filler: Optional[ToolFiller] = None):
     """Register tool handlers with the LLM service for this agent.
     
     Each handler is wrapped in a closure that captures agent_config and call_sid
@@ -538,13 +718,7 @@ def register_tools_for_agent(llm, agent_config: AgentConfig, call_id: str = None
                             if not params.llm or not params.context:
                                 logger.warning(f"⚠️ Warning: llm or context is None for {params.function_name}")
                             logger.info(f"▶️ Executing handler for {_name}...")
-                            # Pass per-call context to handlers that need it
-                            if _name in ("book_appointment", "check_availability", "log_lead", "lookup_client"):
-                                await _handler(params, agent_config=_cfg)
-                            elif _name == "transfer_to_human":
-                                await _handler(params, agent_config=_cfg, call_sid=_sid)
-                            else:
-                                await _handler(params)
+                            await _dispatch_handler(_handler, _name, params, _cfg, _sid, filler)
                             logger.info(f"✅ Handler for {_name} completed.")
                         except Exception as e:
                             logger.error(f"❌ API Handler Crashed: {e}")
@@ -561,12 +735,7 @@ def register_tools_for_agent(llm, agent_config: AgentConfig, call_id: str = None
                 # No call logger — register with context closure for direct calls
                 async def direct_wrapper(params: FunctionCallParams, _handler=handler, _name=tool_name,
                                          _cfg=_call_agent_config, _sid=_call_sid):
-                    if _name in ("book_appointment", "check_availability", "log_lead", "lookup_client"):
-                        await _handler(params, agent_config=_cfg)
-                    elif _name == "transfer_to_human":
-                        await _handler(params, agent_config=_cfg, call_sid=_sid)
-                    else:
-                        await _handler(params)
+                    await _dispatch_handler(_handler, _name, params, _cfg, _sid, filler)
                 llm.register_function(tool_name, direct_wrapper)
             registered.append(tool_name)
         elif tool_name == "call_business_api":

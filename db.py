@@ -140,7 +140,61 @@ CREATE TABLE IF NOT EXISTS leads (
     created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS menu_items (
+    id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id),
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    price_cents INTEGER NOT NULL,
+    available INTEGER DEFAULT 1,
+    choice_name TEXT,
+    choice_options TEXT DEFAULT '[]',
+    PRIMARY KEY (tenant_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS hours (
+    id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id),
+    weekday INTEGER NOT NULL,
+    open_time TEXT NOT NULL,
+    close_time TEXT NOT NULL,
+    slot_minutes INTEGER DEFAULT 15,
+    capacity INTEGER DEFAULT 1,
+    PRIMARY KEY (tenant_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id),
+    agent_id TEXT DEFAULT '',
+    call_id TEXT,
+    status TEXT NOT NULL,
+    total_cents INTEGER NOT NULL,
+    pickup_at TEXT,
+    expires_at TEXT,
+    payment_url TEXT,
+    stripe_session_id TEXT,
+    customer_name TEXT DEFAULT '',
+    customer_phone TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS order_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id TEXT NOT NULL REFERENCES orders(id),
+    tenant_id TEXT NOT NULL,
+    item_id TEXT,
+    name TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    unit_price_cents INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_agents_tenant ON agents(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_menu_tenant ON menu_items(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_hours_tenant ON hours(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_orders_pickup ON orders(tenant_id, pickup_at);
+CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_campaigns_tenant ON campaigns(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_contacts_campaign ON contacts(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_calls_tenant ON calls(tenant_id);
@@ -179,6 +233,10 @@ async def init_db():
         
         # Schema auto-migrations for agents table upgrades
         await _apply_db_migrations(db)
+
+        from orders import refresh_legacy_restaurant_agents, seed_restaurant_menus
+        await refresh_legacy_restaurant_agents()
+        await seed_restaurant_menus()
     finally:
         await db.close()
 

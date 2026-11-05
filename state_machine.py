@@ -22,6 +22,7 @@ from typing import Optional
 from loguru import logger
 import re
 
+from card_mask import CardMasker
 from pipecat.frames.frames import (
     Frame,
     LLMMessagesUpdateFrame,
@@ -367,33 +368,7 @@ class StateMachineProcessor(FrameProcessor):
         # The LLM mirrors the tone of its instructions — robotic instructions
         # produce robotic speech. Coaching-style instructions produce natural speech.
         if self._current_state and self._current_state in self._states:
-            state = self._states[self._current_state]
-            lines = []
-
-            # Coaching-style goal (the state instructions are already written
-            # in a conversational tone by the agent config author)
-            lines.append(f"Right now: {state.instructions}")
-
-            # What to ask about (only if there are required fields)
-            if state.required_info:
-                lines.append(f"You still need to find out: {', '.join(state.required_info)}. Ask naturally — one at a time, woven into conversation.")
-
-            # Transitions — phrased as natural "if…then" guidance
-            if state.transitions:
-                trans = []
-                for event, target in state.transitions.items():
-                    # Convert snake_case event to readable English
-                    readable = event.replace("_", " ")
-                    trans.append(f"If {readable} → [TRANSITION: {target}]")
-                lines.append("Move on when ready: " + " | ".join(trans))
-            else:
-                lines.append("This is the last step. When you're done, say [HANGUP].")
-
-            # Gentle turn reminder only when running low
-            if state.max_turns and self._state_turn_count + 1 >= state.max_turns - 1:
-                lines.append("(Wrap this up soon — you've been on this topic a while.)")
-
-            parts.append("\n".join(lines))
+            parts.append(coaching_for_state(self._states[self._current_state], self._state_turn_count))
 
         return "\n".join(parts) if parts else None
 
@@ -429,6 +404,43 @@ class StateMachineProcessor(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+def coaching_for_state(state, state_turn_count: int = 0) -> str:
+    """The same coaching line the phone path injects for the current state."""
+    lines = [f"Right now: {state.instructions}"]
+    labels = required_info_labels(getattr(state, "required_info", None))
+    if labels:
+        lines.append(
+            f"You still need to find out: {', '.join(labels)}. "
+            "Ask naturally — one at a time, woven into conversation."
+        )
+    transitions = getattr(state, "transitions", None) or {}
+    if transitions:
+        trans = []
+        for event, target in transitions.items():
+            readable = event.replace("_", " ")
+            trans.append(f"If {readable} → [TRANSITION: {target}]")
+        lines.append("Move on when ready: " + " | ".join(trans))
+    else:
+        lines.append("This is the last step. When you're done, say [HANGUP].")
+    max_turns = getattr(state, "max_turns", None)
+    if max_turns and state_turn_count + 1 >= max_turns - 1:
+        lines.append("(Wrap this up soon — you've been on this topic a while.)")
+    return "\n".join(lines)
+
+
+def required_info_labels(required_info) -> list[str]:
+    """Names to speak from required_info, whether each entry is a string or a dict."""
+    labels = []
+    for item in required_info or []:
+        if isinstance(item, dict):
+            name = item.get("name") or ""
+            if name:
+                labels.append(str(name))
+        elif isinstance(item, str) and item:
+            labels.append(item)
+    return labels
+
+
 class StateTransitionFilter(FrameProcessor):
     """Parses LLM output for state transition tags and updates the state machine.
 
@@ -452,6 +464,7 @@ class StateTransitionFilter(FrameProcessor):
         self._buffer = ""           # Accumulates text when inside a bracket tag
         self._buffering = False     # True when we've seen "[" but not yet "]"
         self._transcript_buffer = ""  # Accumulates agent text fragments for clean transcript logging
+        self._cards = CardMasker()
 
     def _flush_transcript_buffer(self):
         """Flush accumulated agent text to transcript as a single entry."""
@@ -471,7 +484,14 @@ class StateTransitionFilter(FrameProcessor):
             isinstance(frame, (TranscriptionFrame, EndFrame)) or 
             type(frame).__name__ in ("LLMFullResponseEndFrame", "UserStartedSpeakingFrame", "UserStoppedSpeakingFrame")
         ):
+            await super().process_frame(frame, direction)
+            leftover = self._cards.flush()
+            if leftover:
+                self._transcript_buffer += leftover
+                await self.push_frame(TextFrame(leftover), direction)
             self._flush_transcript_buffer()
+            await self.push_frame(frame, direction)
+            return
 
         # Only intercept downstream TextFrames; forward everything else
         if not (direction == FrameDirection.DOWNSTREAM and isinstance(frame, TextFrame)):
@@ -495,7 +515,7 @@ class StateTransitionFilter(FrameProcessor):
                 if ch == "]":
                     # We have a full tag in self._buffer
                     # Flush clean text before processing the tag, so TTS speaks it before hangup/transition
-                    clean_text = "".join(clean_chunks)
+                    clean_text = self._cards.feed("".join(clean_chunks))
                     if clean_text:
                         self._transcript_buffer += clean_text
                         await self.push_frame(TextFrame(clean_text), direction)
@@ -515,7 +535,7 @@ class StateTransitionFilter(FrameProcessor):
             i += 1
 
         # Forward any clean (non-tag) text
-        clean_text = "".join(clean_chunks)
+        clean_text = self._cards.feed("".join(clean_chunks))
         if clean_text:
             # Buffer agent text fragments for clean transcript logging
             # (streaming produces 2-5 word chunks — we coalesce into sentences)
